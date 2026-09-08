@@ -1,11 +1,2 @@
-# WorkBuddy Linux deb 下载索引（外部发布仓库：testerxydw/github-release-pkg-url）
-# 仅列最新版；历史版本见各 Release 的 Assets。
-
-# 2026-09-08 WorkBuddy 5.5.3-2 (amd64 / arm64)
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.5.3-1/com.xydw.workbuddy_5.5.3-2_amd64.deb
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.5.3-1/com.xydw.workbuddy_5.5.3-2_arm64.deb
-
-# 2026-09-02 trae-solo-cn 0.1.58-13 (amd64)
-https://github.com/testerxydw/github-release-pkg-url/releases/download/2026-09-02/trae-solo-cn_0.1.58-13_amd64.deb
-# 2026-09-02 trae-solo-cn 0.1.61-1 (amd64)
-https://github.com/testerxydw/github-release-pkg-url/releases/download/2026-09-02/trae-solo-cn_0.1.61-1_amd64.deb
