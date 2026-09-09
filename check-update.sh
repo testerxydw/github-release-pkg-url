@@ -96,6 +96,9 @@ git tag -a "$NEW_TAG" -m "WorkBuddy ${APP_V} Linux 打包 (${NEW_TAG})
   $(basename "${NEW_URL%%\?*}")
 下载:
   ${NEW_URL}"
-git push origin HEAD:main
+# 推送分支：分支名取 CI 提供的 GITHUB_REF_NAME
+# （本仓库默认分支是 master 而非 main，不能写死 main，否则会误建 main 分支）
+TARGET_BRANCH="${GITHUB_REF_NAME:-master}"
+git push origin "HEAD:${TARGET_BRANCH}"
 git push origin "$NEW_TAG"
-log "已推送 main 与 tag $NEW_TAG —— 本仓库 build-deb 将自动构建并发布 Release。"
+log "已推送 ${TARGET_BRANCH} 与 tag $NEW_TAG —— 本仓库 build-deb 将自动构建并发布 Release。"
