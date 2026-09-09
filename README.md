@@ -1,4 +1,4 @@
-# github-releaase-pkg-url
+# github-release-pkg-url
 
 本仓库整理从 GitHub Release 发布的两个 Linux 重打包 `.deb` 安装包，提供下载索引与转制说明。
 

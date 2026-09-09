@@ -1,4 +1,4 @@
-# github-releaase-pkg-url
+# github-release-pkg-url
 
 This repository collects two Linux repackaged `.deb` installers published via GitHub Releases, with a download index and repackaging notes.
 
