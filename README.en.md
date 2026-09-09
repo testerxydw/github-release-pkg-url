@@ -11,7 +11,7 @@ This repository collects two Linux repackaged `.deb` installers published via Gi
 
 Published together on GitHub Releases:
 
-- <https://github.com/testerxydw/github-releaase-pkg-url/releases/tag/2026-09-02>
+- <https://github.com/testerxydw/github-release-pkg-url/releases/tag/2026-09-02>
 
 ## Details
 

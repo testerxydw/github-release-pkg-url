@@ -11,7 +11,7 @@
 
 统一发布在 GitHub Releases：
 
-- <https://github.com/testerxydw/github-releaase-pkg-url/releases/tag/2026-09-02>
+- <https://github.com/testerxydw/github-release-pkg-url/releases/tag/2026-09-02>
 
 ## 详细说明
 
