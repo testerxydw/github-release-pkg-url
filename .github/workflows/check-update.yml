@@ -1,0 +1,45 @@
+# ============================================================================
+# WorkBuddy 更新探测（公有 CI 仓库：testerxydw/github-release-pkg-url）
+#
+# 本仓库同时承担：更新探测 + 拉取私有源码构建 + 产物发布 + 索引维护。
+# 流程：定时/手动 → 跑 check-update.sh 探测上游
+#       → 有新版则写 latest-windows-exe.txt、打 tag vX.Y.Z-1 并推送
+#       → tag push 触发本仓库 build-deb.yml（构建 → 发布 Release → 更新索引）
+#
+# ⚠️ 必须配置 Secret：PRIVATE_REPO_PAT
+#   需同时具备：① 私有源码仓库 testerxydw/workbuddy-linux 的读权限
+#               ② 本仓库的 contents + workflows 写权限
+#   （GITHUB_TOKEN 推 tag 不会递归触发 workflow，故本 job 必须用 PAT 检出并推送）
+# ============================================================================
+name: check-update
+
+on:
+  schedule:
+    # 每日 6 次（每 4 小时一次）：UTC 01/05/09/13/17/21 点
+    #   → 北京时间 09/13/17/21/01/05 点（UTC+8）
+    # 注意：GitHub cron 一律按 UTC，且实际触发可能延迟数分钟。
+    - cron: '0 1,5,9,13,17,21 * * *'
+  workflow_dispatch: {}   # 允许在 Actions 页面手动触发，便于调试
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出本仓库（使用 PAT，便于后续推 tag 能触发 build-deb）
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          persist-credentials: true   # 保留 PAT 凭据，供 check-update.sh 内 git push 使用
+          fetch-depth: 0              # 拉全量，确保 tag 幂等判断准确
+
+      - name: 配置 git 身份
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 运行更新检测
+        run: bash check-update.sh

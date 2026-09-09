@@ -1,0 +1,142 @@
+# ============================================================================
+# WorkBuddy 多架构 deb 构建与发布（公有 CI 仓库：testerxydw/github-release-pkg-url）
+#
+# 触发：本仓库 push tag(v*)；或手动 workflow_dispatch
+# 源码：从【私有仓库】testerxydw/workbuddy-linux 拉取（PRIVATE_REPO_PAT），
+#       检出到 src/ 子目录；build.sh 在 src/ 内运行，产物 deb 落在 src/。
+#       （build.sh 以脚本所在目录 SCRIPT_DIR 定位安装包与产物，故须同目录）
+# 发布：deb 发布到【本仓库自身】对应 tag 的 Release（用 GITHUB_TOKEN）
+# 收尾：update-index 把 deb 下载链接合并写入本仓库 github-release-pkg.txt
+#
+# ⚠️ 本仓库是公有仓库，运行日志与产物对公众可见：
+#       - 只发布 deb（本就要公开发布）；切勿上传解包后的 app / 源码目录
+#       - 不要给本 workflow 加 pull_request 触发（会把 PRIVATE_REPO_PAT 暴露给 fork PR）
+# ============================================================================
+name: build-deb
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build-${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+            debarch: amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            debarch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: 检出本仓库（取 latest-windows-exe.txt）
+        uses: actions/checkout@v4
+
+      - name: 拉取私有源码（testerxydw/workbuddy-linux）
+        uses: actions/checkout@v4
+        with:
+          repository: testerxydw/workbuddy-linux
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          ref: main
+          path: src
+
+      - name: 安装 Node.js（编译 better-sqlite3 需要 npm）
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y rsync p7zip-full dpkg-dev python3 curl
+
+      - name: 下载 Windows 安装包到 src/
+        run: |
+          URL="$(cat latest-windows-exe.txt | tr -d '[:space:]')"
+          test -n "$URL" || { echo "缺少 latest-windows-exe.txt"; exit 1; }
+          FNAME="$(basename "${URL%%\?*}")"
+          echo "下载 Windows 安装包: $FNAME"
+          curl -fL "$URL" -o "src/$FNAME"
+
+      - name: 构建 (${{ matrix.arch }})
+        run: cd src && bash build.sh --arch ${{ matrix.arch }} --no-install
+
+      - name: 发布 deb 到本仓库 Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          # 仅发布 deb 主产物（不发布任何解包目录/源码）
+          files: src/com.xydw.workbuddy_*_${{ matrix.debarch }}.deb
+          fail_on_unmatched_files: false
+
+  # 收尾：把本次 tag 的 deb 下载链接合并写入本仓库根的 github-release-pkg.txt
+  update-index:
+    name: update github-release-pkg.txt
+    needs: build
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 把 deb 下载链接合并写入 github-release-pkg.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: testerxydw
+          REPO: github-release-pkg-url
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          API="https://api.github.com/repos/$OWNER/$REPO"
+          AUTH="Authorization: Bearer $GH_TOKEN"
+          # 本次 tag 的 Release 资产（已含 build 矩阵各架构上传的 deb）
+          REL=$(curl -s -H "$AUTH" "$API/releases/tags/$TAG")
+          NEW_URLS=$(echo "$REL" | python3 -c '
+          import sys, json
+          try:
+              d = json.load(sys.stdin)
+          except Exception:
+              d = {}
+          for a in d.get("assets", []):
+              if a.get("name", "").endswith(".deb"):
+                  print(a["browser_download_url"])
+          ')
+          # 合并策略：保留索引中既有链接（如 trae-solo-cn），加上本次新增，去重后写回
+          EXISTING=$(curl -s -H "$AUTH" "$API/contents/github-release-pkg.txt" \
+                | python3 -c 'import sys,json
+          try:
+              print(json.load(sys.stdin).get("content",""))
+          except Exception:
+              print("")' | base64 -d 2>/dev/null || true)
+          EXISTING_URLS=$(printf "%s\n" "$EXISTING" | grep -E '^https?://' || true)
+          MERGED=$(printf "%s\n%s\n" "$EXISTING_URLS" "$NEW_URLS" | grep -E '^https?://' | awk '!seen[$0]++')
+          if [ -z "$MERGED" ]; then
+            echo "未找到任何 deb 资产，跳过写入"
+            exit 0
+          fi
+          echo "合并后写入 github-release-pkg.txt 的下载链接："
+          echo "$MERGED"
+          CONTENT=$(printf "%s\n" "$MERGED" | base64 -w0)
+          # 取现有文件 SHA（不存在则为空字符串）
+          SHA=$(curl -s -H "$AUTH" "$API/contents/github-release-pkg.txt" \
+                | python3 -c 'import sys,json
+          try:
+              print(json.load(sys.stdin).get("sha",""))
+          except Exception:
+              print("")')
+          if [ -n "$SHA" ]; then
+            curl -s -X PUT -H "$AUTH" -H "Content-Type: application/json" \
+              "$API/contents/github-release-pkg.txt" \
+              -d "$(python3 -c "import json,sys;print(json.dumps({'message':'chore: update deb download links ($TAG)','content':'$CONTENT','sha':'$SHA'}))")"
+          else
+            curl -s -X PUT -H "$AUTH" -H "Content-Type: application/json" \
+              "$API/contents/github-release-pkg.txt" \
+              -d "$(python3 -c "import json,sys;print(json.dumps({'message':'chore: update deb download links ($TAG)','content':'$CONTENT'}))")"
+          fi
+          echo "github-release-pkg.txt 已更新（本仓库 $OWNER/$REPO）"
