@@ -7,9 +7,14 @@
 #   - 检测到新版本后，在【本仓库】打 tag 并推送，触发本仓库 build-deb.yml
 #     （因此检出/推送必须用 PAT：GITHUB_TOKEN 推 tag 不会触发其它 workflow）
 #
-# 依赖：curl / git
+# 依赖：curl / git / python3（解析本机登录态时用）
 # 用法：bash check-update.sh            # 探测 + 有更新则写文件/打 tag/推送
 #       DRY_RUN=1 bash check-update.sh  # 只打印将要执行的动作，不落盘/不推送
+#
+# 灰度探测（可选，默认匿名只探测 GA 版）：
+#   接口 v2/update 按 x-user-id 做灰度分桶，带真实 userId 才能看到该账号被灰度到的版本。
+#   userId 来源优先级：环境变量 WB_X_USER_ID（CI 用 repo secret 注入）> 本机 ~/.workbuddy/app/sessions.json
+#   （实测：仅带 x-user-id 请求头即可命中灰度，无需 Authorization/cookie；CI 日志中该值会被 secret 自动 mask）
 # ============================================================================
 set -uo pipefail
 
@@ -32,9 +37,37 @@ CUR_FULL=$(echo "$CUR_EXE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
 [[ -n "$CUR_FULL" ]] || die "无法解析当前 Windows 版本（$URL_FILE）"
 log "当前仓库 Windows 版本: $CUR_FULL"
 
+# ---------- 1.5 解析登录态（灰度 cohort 探测用） ----------
+# 优先级：环境变量 WB_X_USER_ID（CI secret 注入）> 本机已登录的 WorkBuddy userData
+WB_X_USER_ID="${WB_X_USER_ID:-}"
+WB_X_TENANT_ID="${WB_X_TENANT_ID:-}"
+if [[ -z "$WB_X_USER_ID" ]]; then
+    SESS_FILE="$HOME/.workbuddy/app/sessions.json"
+    PY="$(command -v python3 || command -v python || true)"
+    if [[ -n "$PY" && -f "$SESS_FILE" ]]; then
+        WB_X_USER_ID=$("$PY" -c '
+import sys, json
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+    print(d["sessions"][0]["userId"])
+except Exception:
+    pass
+' "$SESS_FILE" 2>/dev/null || true)
+    fi
+fi
+AUTH_Q=""
+[[ -n "$WB_X_USER_ID" ]]   && AUTH_Q="${AUTH_Q}&x-user-id=${WB_X_USER_ID}"
+[[ -n "$WB_X_TENANT_ID" ]] && AUTH_Q="${AUTH_Q}&x-tenant-id=${WB_X_TENANT_ID}"
+log "登录态: $([[ -n "$WB_X_USER_ID" ]] && echo "已带 x-user-id（灰度探测）" || echo "匿名（仅 GA 版）")"
+
 # ---------- 2. 探测更新接口 ----------
-FEED_URL="${API}?platform=${PLATFORM}&version=${CUR_FULL}"
-log "探测更新接口: $FEED_URL"
+FEED_URL="${API}?platform=${PLATFORM}&version=${CUR_FULL}${AUTH_Q}"
+if [[ -n "$WB_X_USER_ID" ]]; then
+    MASKED="${WB_X_USER_ID:0:8}***"
+    log "探测更新接口（带登录态）: ${API}?platform=${PLATFORM}&version=${CUR_FULL}&x-user-id=${MASKED}"
+else
+    log "探测更新接口（匿名）: $FEED_URL"
+fi
 RESP=$(curl -s --max-time 20 "$FEED_URL" || true)
 if [[ -z "$RESP" || "$RESP" == "{}" || "$RESP" == "[]" ]]; then
     log "接口返回空 —— 当前已是最新，无需更新。"
@@ -80,7 +113,7 @@ fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
     log "[DRY_RUN] 将写入 $URL_FILE: $NEW_URL"
-    log "[DRY_RUN] 将打 tag $NEW_TAG 并推送 main + tag"
+    log "[DRY_RUN] 将打 tag $NEW_TAG 并推送 ${GITHUB_REF_NAME:-master} + tag"
     exit 0
 fi
 

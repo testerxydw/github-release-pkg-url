@@ -10,6 +10,10 @@
 #   需同时具备：① 私有源码仓库 testerxydw/workbuddy-linux 的读权限
 #               ② 本仓库的 contents + workflows 写权限
 #   （GITHUB_TOKEN 推 tag 不会递归触发 workflow，故本 job 必须用 PAT 检出并推送）
+# ⚠️ 可选 Secret：WB_X_USER_ID（用于灰度探测）
+#   填入本机 WorkBuddy 登录账号的 userId（~/.workbuddy/app/sessions.json 的 sessions[0].userId）
+#   配置后 check-update.sh 才能探测到该账号被灰度到的版本（如 5.5.6）；不配置则仅探测 GA 版。
+#   该值会在 CI 日志中被 GitHub 自动 mask，不会明文泄露。
 # ============================================================================
 name: check-update
 
@@ -42,4 +46,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: 运行更新检测
+        env:
+          WB_X_USER_ID: ${{ secrets.WB_X_USER_ID }}
         run: bash check-update.sh
