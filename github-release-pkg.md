@@ -49,17 +49,18 @@ sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
 
 | 版本 | 安装包 | 下载地址 |
 | --- | --- | --- |
-| `5.4.7-10` | `com.xydw.workbuddy_5.4.7-10_amd64.deb` | <https://github.com/testerxydw/github-releaase-pkg-url/releases/download/2026-09-02/com.xydw.workbuddy_5.4.7-10_amd64.deb> |
+| `5.5.6-1` | `com.xydw.workbuddy_5.5.6-1_amd64.deb` | <https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.5.6-1/com.xydw.workbuddy_5.5.6-1_amd64.deb> |
+| `5.4.7-10` | `com.xydw.workbuddy_5.4.7-10_amd64.deb` | <https://github.com/testerxydw/github-release-pkg-url/releases/download/2026-09-02/com.xydw.workbuddy_5.4.7-10_amd64.deb> |
 
 ---
 
 ## 2. Trae SOLO 国内版（字节跳动 AI 原生 IDE）
 
 - **包名**：`trae-solo-cn`
-- **版本**：`0.1.58-13`
+- **版本**：`0.1.63-3`
 - **架构**：`amd64`
-- **安装包**：`trae-solo-cn_0.1.58-13_amd64.deb`
-- **下载地址**：<https://github.com/testerxydw/github-releaase-pkg-url/releases/download/2026-09-02/trae-solo-cn_0.1.58-13_amd64.deb>
+- **安装包**：`trae-solo-cn_0.1.63-3_amd64.deb`
+- **下载地址**：<https://github.com/testerxydw/github-release-pkg-url/releases/download/traework/trae-solo-cn_0.1.63-3_amd64.deb>
 
 ### 产品简介
 
@@ -88,7 +89,52 @@ sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
 
 ---
 
+## 3. Navicat Premium Lite（Navicat 免费版数据库管理工具 · deepin 规范重打包版）
+
+- **包名**：`com.navicat.premiumlite`
+- **版本**：`17.3.10-2`
+- **架构**：`amd64`
+- **安装包**：`com.navicat.premiumlite_17.3.10-2_amd64.deb`
+- **适用系统**：Deepin 23 / UOS v25 / Debian 12+（amd64）
+- **上游**：官方 Navicat Premium Lite 17 Linux AppImage
+- **下载地址**：<https://github.com/testerxydw/github-release-pkg-url/releases/download/2026-09-02/com.navicat.premiumlite_17.3.10-2_amd64.deb>
+
+### 产品简介
+
+**Navicat Premium Lite** 是 Navicat 官方推出的**免费版**数据库管理与开发工具，可从单一应用同时连接 MySQL、MariaDB、PostgreSQL、SQLite、SQL Server、Oracle、Snowflake、Redis 等多种数据库平台，提供查询、数据编辑、数据传输等核心功能。官方 Linux 版以 **AppImage** 格式发布。
+
+本 `.deb` 包为**非官方重打包版**：将官方 AppImage 按 **deepin 应用打包规范**（`/opt/apps` 结构）重打包，安装后自动接入系统应用菜单，并兼容非 deepin 桌面环境。仅供学习交流使用。
+
+### 打包要点与关键修复
+
+| 项 | 说明 |
+| --- | --- |
+| 打包结构 | deepin 规范 `/opt/apps/com.navicat.premiumlite/`，AppImage 载荷约 711M，自包含加载 |
+| 桌面/图标 | 软链至标准 XDG 路径，兼容非 deepin 桌面环境 |
+| 启动脚本 | `cd` 到应用根目录（对齐官方 AppRun），修复相对路径 `dlopen` 导致的驱动库加载失败 |
+| 退出看门狗 | `xprop -spy` 事件驱动（零轮询）：窗口全部关闭而进程未退出时，宽限 10 秒后 TERM，仍不退则 KILL；正常退出零动作，无 `xprop` 环境自动退化为官方行为 |
+| postinst | 仅做桌面/图标软链，不再向 `/usr/lib` 复制库文件（省约 240M） |
+
+### 安装与运行
+
+```bash
+sudo dpkg -i com.navicat.premiumlite_*.deb
+sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
+```
+
+- 应用菜单搜索 **Navicat Premium Lite**；
+- 包内更新说明：`cat /usr/share/doc/com.navicat.premiumlite/changelog`
+
+### 版本历史
+
+| 版本 | 发布日期 | 下载地址 |
+| --- | --- | --- |
+| `17.3.10-2` | 2026-09-11 | <https://github.com/testerxydw/github-release-pkg-url/releases/download/2026-09-02/com.navicat.premiumlite_17.3.10-2_amd64.deb> |
+| `17.3.10-1` | 2026-09-10 | 首次按 deepin 规范打包（未单独发布，已被 `-2` 取代） |
+
+---
+
 ## 备注
 
 - 本文件为对下载地址的整理与说明，原始下载链接见同目录下的 `github-release-pkg.txt`。
-- 两个安装包均为 `amd64` 架构的 `.deb` 格式，适用于 Debian / Ubuntu / deepin / UOS 等系统，可通过 `sudo dpkg -i <包名>.deb` 安装。
+- 三个安装包均为 `amd64` 架构的 `.deb` 格式，适用于 Debian / Ubuntu / deepin / UOS 等系统，可通过 `sudo dpkg -i <包名>.deb` 安装。
