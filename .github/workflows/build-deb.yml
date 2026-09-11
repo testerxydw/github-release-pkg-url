@@ -6,7 +6,7 @@
 #       检出到 src/ 子目录；build.sh 在 src/ 内运行，产物 deb 落在 src/。
 #       （build.sh 以脚本所在目录 SCRIPT_DIR 定位安装包与产物，故须同目录）
 # 发布：deb 发布到【本仓库自身】对应 tag 的 Release（用 GITHUB_TOKEN）
-# 收尾：update-index 把 deb 下载链接合并写入本仓库 github-release-pkg.txt
+# 收尾：update-index 按「# YYYY-MM-DD HH:MM <说明>」+ 链接 的约定格式，把本次 tag 的 deb 下载链接【追加】写入本仓库 github-release-pkg.txt（保留既有表头/注释/历史条目）
 #
 # ⚠️ 本仓库是公有仓库，运行日志与产物对公众可见：
 #       - 只发布 deb（本就要公开发布）；切勿上传解包后的 app / 源码目录
@@ -78,14 +78,14 @@ jobs:
           files: src/com.xydw.workbuddy_*_${{ matrix.debarch }}.deb
           fail_on_unmatched_files: false
 
-  # 收尾：把本次 tag 的 deb 下载链接合并写入本仓库根的 github-release-pkg.txt
+  # 收尾：把本次 tag 的 deb 下载链接【追加】写入本仓库根的 github-release-pkg.txt（保留表头/注释/历史条目，新条目带发布时间 + 说明）
   update-index:
     name: update github-release-pkg.txt
     needs: build
     if: ${{ startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
-      - name: 把 deb 下载链接合并写入 github-release-pkg.txt
+      - name: 追加 deb 下载链接（带发布时间 + 说明）到 github-release-pkg.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: testerxydw
@@ -97,32 +97,55 @@ jobs:
           AUTH="Authorization: Bearer $GH_TOKEN"
           # 本次 tag 的 Release 资产（已含 build 矩阵各架构上传的 deb）
           REL=$(curl -s -H "$AUTH" "$API/releases/tags/$TAG")
-          NEW_URLS=$(echo "$REL" | python3 -c '
-          import sys, json
+          # 仅追加本次 tag「索引尚未包含」的 deb：# 发布时间 <说明> + 下载链接
+          export EXISTING_CONTENT="$EXISTING"
+          APPEND=$(echo "$REL" | python3 -c '
+          import sys, json, re, os
           try:
               d = json.load(sys.stdin)
           except Exception:
               d = {}
+          existing = os.environ.get("EXISTING_CONTENT", "")
+          existing_urls = {l.strip() for l in existing.splitlines() if l.strip().startswith("http")}
+          NAME_MAP = {
+              "workbuddy": "WorkBuddy CN",
+              "trae-solo-cn": "Trae SOLO 国内版",
+              "com.navicat.premiumlite": "Navicat Premium Lite",
+          }
+          out = []
           for a in d.get("assets", []):
-              if a.get("name", "").endswith(".deb"):
-                  print(a["browser_download_url"])
+              name = a.get("name", "")
+              if not name.endswith(".deb"):
+                  continue
+              url = a.get("browser_download_url", "")
+              if url in existing_urls:
+                  continue
+              m = re.match(r"^(?:com\.xydw\.)?(.+?)_([^_]+)_([^_]+)\.deb$", name)
+              pkg = ver = arch = ""
+              if m:
+                  pkg, ver, arch = m.group(1), m.group(2), m.group(3)
+              else:
+                  pkg = name
+              disp = NAME_MAP.get(pkg, pkg)
+              desc = disp + (f" {ver}" if ver else "") + (f" ({arch})" if arch else "")
+              created = (a.get("created_at", "") or "")[:16].replace("T", " ")
+              out.append(f"# {created} {desc}")
+              out.append(url)
+          print("\n".join(out))
           ')
-          # 合并策略：保留索引中既有链接（如 trae-solo-cn），加上本次新增，去重后写回
-          EXISTING=$(curl -s -H "$AUTH" "$API/contents/github-release-pkg.txt" \
-                | python3 -c 'import sys,json
-          try:
-              print(json.load(sys.stdin).get("content",""))
-          except Exception:
-              print("")' | base64 -d 2>/dev/null || true)
-          EXISTING_URLS=$(printf "%s\n" "$EXISTING" | grep -E '^https?://' || true)
-          MERGED=$(printf "%s\n%s\n" "$EXISTING_URLS" "$NEW_URLS" | grep -E '^https?://' | awk '!seen[$0]++')
-          if [ -z "$MERGED" ]; then
-            echo "未找到任何 deb 资产，跳过写入"
+          if [ -z "$APPEND" ]; then
+            echo "索引已包含本次 tag 的全部 deb 资产，跳过写入"
             exit 0
           fi
-          echo "合并后写入 github-release-pkg.txt 的下载链接："
-          echo "$MERGED"
-          CONTENT=$(printf "%s\n" "$MERGED" | base64 -w0)
+          # 现有内容去尾随空行后追加新条目（最新在末尾，符合增量约定）；首建则无表头
+          if [ -z "$EXISTING" ]; then
+            BODY="$APPEND"
+          else
+            BODY=$(printf "%s\n%s\n" "$(printf "%s" "$EXISTING" | sed -e 's/[[:space:]]*$//')" "$APPEND")
+          fi
+          CONTENT=$(printf "%s\n" "$BODY" | base64 -w0)
+          echo "本次向 github-release-pkg.txt 追加："
+          echo "$APPEND"
           # 取现有文件 SHA（不存在则为空字符串）
           SHA=$(curl -s -H "$AUTH" "$API/contents/github-release-pkg.txt" \
                 | python3 -c 'import sys,json
