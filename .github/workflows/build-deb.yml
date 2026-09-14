@@ -163,3 +163,234 @@ jobs:
               -d "$(python3 -c "import json,sys;print(json.dumps({'message':'chore: update deb download links ($TAG)','content':'$CONTENT'}))")"
           fi
           echo "github-release-pkg.txt 已更新（本仓库 $OWNER/$REPO）"
+
+  # 收尾：发布完成后多通道通知（构建失败也会通知，便于及时排查）
+  # 配置：仓库 Settings → Secrets and variables → Actions，新增任意一个或多个；未配置的通道自动跳过
+  #   WECOM_WEBHOOK    企业微信群机器人完整 webhook 地址（推荐）
+  #                    机器人若设置了「自定义关键词」，默认填「发布通知」（本通知标题已含该词）
+  #   PUSHPLUS_TOKEN   PushPlus token（推送到微信；pushplus.plus 微信扫码登录后获取）
+  #   SERVERCHAN_KEY   Server 酱 SendKey（推送到微信；sct.ftqq.com 获取）
+  #   TG_BOT_TOKEN + TG_CHAT_ID   Telegram 机器人推送
+  #   NTFY_TOPIC       ntfy 主题名或完整 URL（手机装 ntfy App 订阅该主题）
+  #   BARK_URL         Bark 推送地址（iOS）
+  #   MAIL_*           邮件推送（Python smtplib 直发，零依赖第三方 action）：
+  #                     MAIL_SMTP_HOST   SMTP 服务器，如 smtp.qq.com / smtp.163.com / smtp.gmail.com
+  #                     MAIL_SMTP_PORT   465（SSL，默认）或 587（STARTTLS）
+  #                     MAIL_USERNAME    发件邮箱
+  #                     MAIL_PASSWORD    SMTP 授权码（多数邮箱不是登录密码）
+  #                     MAIL_TO          收件人，多个用逗号分隔
+  #                     MAIL_FROM        可选，默认 = MAIL_USERNAME
+  # 说明：本仓库是公有仓库，通知密钥一律存 Secrets（日志中自动 mask），切勿写进本文件。
+  notify:
+    name: notify
+    needs: [build, update-index]
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 生成通知内容（Markdown）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          INDEX_RESULT: ${{ needs.update-index.result }}
+        run: |
+          set -uo pipefail
+          echo '{}' > rel.json
+          curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/$TAG" -o rel.json || true
+          python3 -c '
+          import json, os, re, html
+          from datetime import datetime, timedelta, timezone
+
+          tag = os.environ["TAG"]; repo = os.environ["REPO"]
+          build = os.environ["BUILD_RESULT"]; index = os.environ["INDEX_RESULT"]
+          ts = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
+          try:
+              rel = json.load(open("rel.json", encoding="utf-8"))
+              rel = rel if isinstance(rel, dict) else {}
+          except Exception:
+              rel = {}
+          ok = build == "success"
+          lines = ["## 发布通知 · WorkBuddy Linux 包" + ("发布成功 ✅" if ok else "构建失败 ❌"), ""]
+          lines.append("> 版本：**%s**" % tag)
+          lines.append("> 时间：%s (UTC+8)" % ts)
+          lines.append("> 仓库：%s" % repo)
+          if not ok:
+              lines.append("> 构建结果：%s　索引：%s" % (build, index))
+          url = rel.get("html_url") or ("https://github.com/%s/releases/tag/%s" % (repo, tag))
+          debs = sorted([a for a in rel.get("assets", []) if str(a.get("name", "")).endswith(".deb")],
+                        key=lambda a: a.get("name", ""))
+          lines.append("")
+          lines.append("**下载**：[%s](%s)" % (tag, url))
+          for a in debs:
+              lines.append("- [%s](%s)" % (a.get("name"), a.get("browser_download_url")))
+          md = "\n".join(lines) + "\n"
+          open("notice.md", "w", encoding="utf-8").write(md)
+          open("notice.txt", "w", encoding="utf-8").write(
+              "\n".join(l.replace("**", "").replace("## ", "").replace("> ", "") for l in lines) + "\n")
+
+          # 邮件用的 HTML 版正文（极简 Markdown 渲染：标题/引用/链接/列表）
+          def inline(s):
+              s = html.escape(s)
+              s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+              return re.sub(r"\[(.+?)\]\((https?://[^)]+)\)", r'<a href="\2">\1</a>', s)
+
+          body, in_ul = [], False
+          for l in lines:
+              if l.startswith("## "):
+                  body.append("<h2 style=\"margin:0 0 12px\">%s</h2>" % inline(l[3:]))
+              elif l.startswith("> "):
+                  body.append("<p style=\"color:#666;margin:2px 0\">%s</p>" % inline(l[2:]))
+              elif l.startswith("- "):
+                  if not in_ul:
+                      body.append("<ul style=\"margin:6px 0\">"); in_ul = True
+                  body.append("<li>%s</li>" % inline(l[2:]))
+              elif not l.strip() and in_ul:
+                  body.append("</ul>"); in_ul = False
+          if in_ul:
+              body.append("</ul>")
+          open("notice.html", "w", encoding="utf-8").write(
+              '<html><body style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
+              'font-size:14px;color:#222;line-height:1.6">\n' + "\n".join(body) + "\n</body></html>\n")
+          print(md)
+          '
+          cat notice.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 发送通知（未配置的通道自动跳过）
+        env:
+          TITLE: WorkBuddy Linux 发布通知
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          BARK_URL: ${{ secrets.BARK_URL }}
+          MAIL_SMTP_HOST: ${{ secrets.MAIL_SMTP_HOST }}
+          MAIL_SMTP_PORT: ${{ secrets.MAIL_SMTP_PORT }}
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -uo pipefail
+          SENT=0
+
+          # 1) 企业微信群机器人（msgtype=markdown）
+          if [ -n "${WECOM_WEBHOOK:-}" ]; then
+            python3 -c '
+          import json
+          print(json.dumps({"msgtype": "markdown",
+                            "markdown": {"content": open("notice.md", encoding="utf-8").read()}},
+                           ensure_ascii=False))
+          ' > /tmp/wecom.json
+            echo "企业微信机器人返回: $(curl -s --max-time 20 -X POST \
+              -H 'Content-Type: application/json' --data-binary @/tmp/wecom.json "$WECOM_WEBHOOK")"
+            SENT=$((SENT + 1))
+          fi
+
+          # 2) PushPlus（微信公众号推送）
+          if [ -n "${PUSHPLUS_TOKEN:-}" ]; then
+            python3 -c '
+          import json, os
+          print(json.dumps({"token": os.environ["PUSHPLUS_TOKEN"], "title": os.environ["TITLE"],
+                            "content": open("notice.md", encoding="utf-8").read(), "template": "markdown"},
+                           ensure_ascii=False))
+          ' > /tmp/pushplus.json
+            echo "PushPlus 返回: $(curl -s --max-time 20 -X POST -H 'Content-Type: application/json' \
+              --data-binary @/tmp/pushplus.json https://www.pushplus.plus/send)"
+            SENT=$((SENT + 1))
+          fi
+
+          # 3) Server 酱（微信公众号推送）
+          if [ -n "${SERVERCHAN_KEY:-}" ]; then
+            echo "Server酱返回: $(curl -s --max-time 20 -X POST \
+              "https://sctapi.ftqq.com/${SERVERCHAN_KEY}.send" \
+              --data-urlencode "title=${TITLE}" --data-urlencode "desp@notice.md")"
+            SENT=$((SENT + 1))
+          fi
+
+          # 4) Telegram Bot
+          if [ -n "${TG_BOT_TOKEN:-}" ] && [ -n "${TG_CHAT_ID:-}" ]; then
+            echo "Telegram 返回: $(curl -s --max-time 20 -X POST \
+              "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TG_CHAT_ID}" --data-urlencode "text@notice.txt" \
+              -d "disable_web_page_preview=true")"
+            SENT=$((SENT + 1))
+          fi
+
+          # 5) ntfy（手机装 ntfy App 订阅）
+          if [ -n "${NTFY_TOPIC:-}" ]; then
+            NTFY_URL="$NTFY_TOPIC"
+            case "$NTFY_URL" in http*) ;; *) NTFY_URL="https://ntfy.sh/${NTFY_TOPIC}" ;; esac
+            echo "ntfy 返回: $(curl -s --max-time 20 -X POST -H "Title: ${TITLE}" \
+              -H 'Markdown: yes' --data-binary @notice.md "$NTFY_URL")"
+            SENT=$((SENT + 1))
+          fi
+
+          # 6) Bark（iOS）
+          if [ -n "${BARK_URL:-}" ]; then
+            python3 -c '
+          import json, os
+          print(json.dumps({"title": os.environ["TITLE"],
+                            "body": open("notice.txt", encoding="utf-8").read()}, ensure_ascii=False))
+          ' > /tmp/bark.json
+            echo "Bark 返回: $(curl -s --max-time 20 -X POST -H 'Content-Type: application/json' \
+              --data-binary @/tmp/bark.json "$BARK_URL")"
+            SENT=$((SENT + 1))
+          fi
+
+          # 7) 邮件（Python smtplib 直发；465=SSL，其它端口走 STARTTLS）
+          if [ -n "${MAIL_SMTP_HOST:-}" ] && [ -n "${MAIL_USERNAME:-}" ] && \
+             [ -n "${MAIL_PASSWORD:-}" ] && [ -n "${MAIL_TO:-}" ]; then
+            if python3 -c '
+          import os, ssl, smtplib
+          from email.message import EmailMessage
+          from email.utils import formatdate
+
+          host = os.environ["MAIL_SMTP_HOST"]
+          port = int(os.environ.get("MAIL_SMTP_PORT") or 465)
+          user = os.environ["MAIL_USERNAME"]
+          pwd = os.environ["MAIL_PASSWORD"]
+          to = [x.strip() for x in os.environ["MAIL_TO"].replace(";", ",").split(",") if x.strip()]
+          frm = os.environ.get("MAIL_FROM") or user
+          subject = os.environ.get("TITLE", "发布通知")
+          if os.environ.get("TAG"):
+              subject += " · " + os.environ["TAG"]
+
+          msg = EmailMessage()
+          msg["From"] = frm
+          msg["To"] = ", ".join(to)
+          msg["Subject"] = subject
+          msg["Date"] = formatdate(localtime=True)
+          msg.set_content(open("notice.txt", encoding="utf-8").read())
+          msg.add_alternative(open("notice.html", encoding="utf-8").read(), subtype="html")
+
+          if port == 465:
+              srv = smtplib.SMTP_SSL(host, port, timeout=30, context=ssl.create_default_context())
+          else:
+              srv = smtplib.SMTP(host, port, timeout=30)
+              srv.ehlo()
+              try:
+                  srv.starttls(context=ssl.create_default_context())
+                  srv.ehlo()
+              except smtplib.SMTPException:
+                  pass
+          srv.login(user, pwd)
+          srv.send_message(msg)
+          srv.quit()
+          print("邮件已发送至: " + ", ".join(to))
+          '; then
+              SENT=$((SENT + 1))
+            else
+              echo "邮件发送失败：请检查 MAIL_SMTP_HOST/PORT/USERNAME/PASSWORD（授权码）/MAIL_TO 配置。"
+            fi
+          fi
+
+          if [ "$SENT" -eq 0 ]; then
+            echo "未配置任何通知通道（可配置 WECOM_WEBHOOK / PUSHPLUS_TOKEN / SERVERCHAN_KEY / TG_BOT_TOKEN+TG_CHAT_ID / NTFY_TOPIC / BARK_URL / MAIL_*），本次未发送通知。"
+          else
+            echo "已向 $SENT 个通知通道发送发布通知。"
+          fi
