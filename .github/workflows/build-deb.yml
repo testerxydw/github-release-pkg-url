@@ -233,6 +233,19 @@ jobs:
           AUTH="Authorization: Bearer $GH_TOKEN"
           # 本次 tag 的 Release 资产（已含 build 矩阵各架构上传的 deb）
           REL=$(curl -s -H "$AUTH" "$API/releases/tags/$TAG")
+          # 读取【现有】索引内容（必须！否则下面的 EXISTING 为空 → BODY 直接覆盖整份索引、丢失历史条目）
+          EXISTING=$(curl -s -H "$AUTH" "$API/contents/github-release-pkg.txt" | python3 -c '
+          import sys, json, base64
+          try:
+              d = json.load(sys.stdin)
+              print(base64.b64decode(d.get("content", "")).decode("utf-8"), end="")
+          except Exception:
+              pass')
+          if [ -z "$EXISTING" ]; then
+            echo "索引文件为空或不存在，本次按首次写入处理"
+          else
+            echo "已取到现有索引：$(printf '%s' "$EXISTING" | grep -c '^http') 条下载链接"
+          fi
           # 仅追加本次 tag「索引尚未包含」的 deb：# 发布时间 <说明> + 下载链接
           export EXISTING_CONTENT="$EXISTING"
           APPEND=$(echo "$REL" | python3 -c '
