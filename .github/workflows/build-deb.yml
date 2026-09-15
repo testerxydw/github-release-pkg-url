@@ -118,9 +118,10 @@ jobs:
       - name: 安装系统依赖
         run: |
           sudo apt-get update -y
+          # innoextract 需要 Boost（date_time/filesystem/iostreams/program_options/system），
+          # 用 libboost-all-dev 一次装全，避免逐个组件找不齐导致 cmake 配置失败
           sudo apt-get install -y rsync dpkg-dev python3 curl ca-certificates \
-            cmake g++ pkg-config libboost-filesystem-dev libboost-iostreams-dev \
-            libboost-program-options-dev zlib1g-dev liblzma-dev fakeroot icoutils aria2
+            cmake g++ pkg-config libboost-all-dev zlib1g-dev liblzma-dev fakeroot icoutils aria2
 
       - name: 缓存构建依赖（innoextract / 运行时 / 原生模块）
         uses: actions/cache@v4
