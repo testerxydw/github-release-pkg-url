@@ -170,11 +170,13 @@ jobs:
             curl -fL -o sqlite3-v5.1.7-napi-v6-linux-x64.tar.gz \
               "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v6-linux-x64.tar.gz"
           if [ ! -f msal-linux-x64/msal-node-runtime.node ]; then
-            npm pack @azure/msal-node-runtime@0.20.6 --silent >/dev/null
-            tar -xzf azure-msal-node-runtime-0.20.6.tgz
-            cp package/dist/linux/ubuntu/x64/msal-node-runtime.node msal-linux-x64/
-            cp package/dist/linux/ubuntu/x64/libmsalruntime.so      msal-linux-x64/
-            rm -rf package azure-msal-node-runtime-0.20.6.tgz
+            # 直接取 npm registry 的 tarball（不依赖本机 npm）
+            curl -fL -o msal.tgz \
+              "https://registry.npmjs.org/@azure/msal-node-runtime/-/msal-node-runtime-0.20.6.tgz"
+            rm -rf msal-pkg && mkdir msal-pkg && tar -xzf msal.tgz -C msal-pkg
+            cp msal-pkg/package/dist/linux/ubuntu/x64/msal-node-runtime.node msal-linux-x64/
+            cp msal-pkg/package/dist/linux/ubuntu/x64/libmsalruntime.so      msal-linux-x64/
+            rm -rf msal-pkg msal.tgz
           fi
           ls -lh . msal-linux-x64
 
