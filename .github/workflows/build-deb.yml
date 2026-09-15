@@ -1,10 +1,14 @@
 # ============================================================================
-# WorkBuddy 多架构 deb 构建与发布（公有 CI 仓库：testerxydw/github-release-pkg-url）
+# deb 构建与发布（公有 CI 仓库：testerxydw/github-release-pkg-url）
 #
-# 触发：本仓库 push tag(v*)；或手动 workflow_dispatch
+# 两个子项目共用本 workflow，按 tag 前缀分流：
+#   - WorkBuddy CN  tag v*              → job: build（矩阵 x64/arm64）+ update-index + notify
+#   - JoyCode       tag joycode-v*      → job: build-joycode（仅 amd64）+ update-index + notify
+#
+# 触发：本仓库 push tag（v* / joycode-v*）；或手动 workflow_dispatch
 # 源码：从【私有仓库】testerxydw/workbuddy-linux 拉取（PRIVATE_REPO_PAT），
-#       检出到 src/ 子目录；build.sh 在 src/ 内运行，产物 deb 落在 src/。
-#       （build.sh 以脚本所在目录 SCRIPT_DIR 定位安装包与产物，故须同目录）
+#       检出到 src/ 子目录；构建脚本在 src/ 内运行，产物 deb 落在 src/ 或 src/joycode-win-to-linux/dist/。
+#       （脚本以自身所在目录 SCRIPT_DIR 定位安装包与产物，故安装包须放在脚本同级或上一级）
 # 发布：deb 发布到【本仓库自身】对应 tag 的 Release（用 GITHUB_TOKEN）
 # 收尾：update-index 按「# YYYY-MM-DD HH:MM <说明>」+ 链接 的约定格式，把本次 tag 的 deb 下载链接【追加】写入本仓库 github-release-pkg.txt（保留既有表头/注释/历史条目）
 #
@@ -17,7 +21,7 @@ name: build-deb
 on:
   workflow_dispatch: {}
   push:
-    tags: ['v*']
+    tags: ['v*', 'joycode-v*']
 
 permissions:
   contents: write
@@ -25,6 +29,8 @@ permissions:
 jobs:
   build:
     name: build-${{ matrix.arch }}
+    # 仅 WorkBuddy 的 tag（v*）走本 job；JoyCode 的 tag 以 joycode- 开头，交给 build-joycode
+    if: ${{ !startsWith(github.ref_name, 'joycode-') }}
     strategy:
       fail-fast: false
       matrix:
@@ -78,11 +84,138 @@ jobs:
           files: src/com.xydw.workbuddy_*_${{ matrix.debarch }}.deb
           fail_on_unmatched_files: false
 
+  # ==========================================================================
+  # JoyCode（京东云 JoyCode IDE）构建：tag joycode-v*
+  #
+  # 原理：JoyCode 3.0.10 = VS Code 1.98.2 fork + Electron 35.6.0，官方无 Linux 版；
+  #       借 VS Code 1.102.0 linux-x64（同为 Electron 35.6.0，ABI 133）作 Linux 运行时与
+  #       .so 原生模块来源，换掉 Windows 模块后重新打 deb。
+  #       构建逻辑全部在私有仓库的 joycode-win-to-linux/build-joycode.sh 内，
+  #       本 job 只负责准备缓存、下载安装包、执行构建。
+  #
+  # 依赖缓存（缺失时自动下载/编译，命中则秒过）：
+  #   ~/.cache/bin/innoextract                  支持 Inno Setup 6.4 的解包器（源码编译，约 2 分钟）
+  #   ~/.cache/vscode-runtime/*.tar.gz          VS Code 1.102.0 linux-x64 运行时（约 154MB）
+  #   ~/.cache/native/                          better-sqlite3 / sqlite3 预编译 + msal Linux 二进制
+  # ==========================================================================
+  build-joycode:
+    name: build-joycode
+    if: ${{ startsWith(github.ref_name, 'joycode-') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: 检出本仓库（取 latest-joycode-exe.txt）
+        uses: actions/checkout@v4
+
+      - name: 拉取私有源码（testerxydw/workbuddy-linux）
+        uses: actions/checkout@v4
+        with:
+          repository: testerxydw/workbuddy-linux
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          ref: main
+          path: src
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y rsync dpkg-dev python3 curl ca-certificates \
+            cmake g++ pkg-config libboost-filesystem-dev libboost-iostreams-dev \
+            libboost-program-options-dev zlib1g-dev liblzma-dev fakeroot icoutils aria2
+
+      - name: 缓存构建依赖（innoextract / 运行时 / 原生模块）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bin/innoextract
+            ~/.cache/vscode-runtime/vscode-1.102.0-linux-x64.tar.gz
+            ~/.cache/native
+          key: joycode-deps-v1-${{ runner.os }}
+
+      - name: 准备 innoextract（支持 Inno Setup 6.4；系统自带 1.9 不支持）
+        run: |
+          set -e
+          if [ -x "$HOME/.cache/bin/innoextract" ]; then
+            "$HOME/.cache/bin/innoextract" --version | head -1
+            echo "命中缓存，跳过编译"
+            exit 0
+          fi
+          mkdir -p "$HOME/.cache/bin"
+          git clone --depth 60 https://github.com/dscharrer/innoextract.git /tmp/innoextract-src
+          cmake -S /tmp/innoextract-src -B /tmp/innoextract-build -DCMAKE_BUILD_TYPE=Release >/dev/null
+          cmake --build /tmp/innoextract-build -j"$(nproc)"
+          cp /tmp/innoextract-build/innoextract "$HOME/.cache/bin/innoextract"
+          "$HOME/.cache/bin/innoextract" --version | head -1
+
+      - name: 准备 VS Code 1.102.0 Linux 运行时（Electron 35.6.0）
+        run: |
+          set -e
+          mkdir -p "$HOME/.cache/vscode-runtime"
+          F="$HOME/.cache/vscode-runtime/vscode-1.102.0-linux-x64.tar.gz"
+          if [ ! -s "$F" ]; then
+            aria2c -x16 -s16 -k 1M --file-allocation=none \
+              -d "$HOME/.cache/vscode-runtime" -o "$(basename "$F")" \
+              "https://update.code.visualstudio.com/1.102.0/linux-x64/stable"
+          fi
+          ls -lh "$F"
+
+      - name: 准备原生模块预编译包（better-sqlite3 / sqlite3 / msal）
+        run: |
+          set -e
+          mkdir -p "$HOME/.cache/native/msal-linux-x64"
+          cd "$HOME/.cache/native"
+          [ -s better-sqlite3-v12.5.0-electron-v133-linux-x64.tar.gz ] || \
+            curl -fL -o better-sqlite3-v12.5.0-electron-v133-linux-x64.tar.gz \
+              "https://github.com/WiseLibs/better-sqlite3/releases/download/v12.5.0/better-sqlite3-v12.5.0-electron-v133-linux-x64.tar.gz"
+          [ -s sqlite3-v5.1.7-napi-v6-linux-x64.tar.gz ] || \
+            curl -fL -o sqlite3-v5.1.7-napi-v6-linux-x64.tar.gz \
+              "https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v6-linux-x64.tar.gz"
+          if [ ! -f msal-linux-x64/msal-node-runtime.node ]; then
+            npm pack @azure/msal-node-runtime@0.20.6 --silent >/dev/null
+            tar -xzf azure-msal-node-runtime-0.20.6.tgz
+            cp package/dist/linux/ubuntu/x64/msal-node-runtime.node msal-linux-x64/
+            cp package/dist/linux/ubuntu/x64/libmsalruntime.so      msal-linux-x64/
+            rm -rf package azure-msal-node-runtime-0.20.6.tgz
+          fi
+          ls -lh . msal-linux-x64
+
+      - name: 下载 JoyCode Windows 安装包到 src/
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: |
+          set -e
+          SRC="$(grep -v '^[[:space:]]*#' latest-joycode-exe.txt | grep -m1 -E '^(https?://|release:)' || true)"
+          test -n "$SRC" || { echo "latest-joycode-exe.txt 未配置安装包来源（见文件内注释）"; exit 1; }
+          case "$SRC" in
+            release:*)
+              SPEC="${SRC#release:}"          # 形式: owner/repo@tag/asset
+              REPO="${SPEC%%@*}"; REST="${SPEC#*@}"
+              TAG="${REST%%/*}";  ASSET="${REST#*/}"
+              echo "从私有仓库 Release 下载: $REPO @ $TAG / $ASSET"
+              gh release download "$TAG" -R "$REPO" -p "$ASSET" -O "src/JoyCodeSetup.exe" --clobber
+              ;;
+            *)
+              echo "从直链下载: $SRC"
+              curl -fL --retry 3 "$SRC" -o "src/JoyCodeSetup.exe"
+              ;;
+          esac
+          ls -lh src/JoyCodeSetup.exe
+
+      - name: 构建 JoyCode deb
+        run: cd src && bash joycode-win-to-linux/build-joycode.sh --no-install
+
+      - name: 发布 deb 到本仓库 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: src/joycode-win-to-linux/dist/joycode_*_amd64.deb
+          fail_on_unmatched_files: false
+
   # 收尾：把本次 tag 的 deb 下载链接【追加】写入本仓库根的 github-release-pkg.txt（保留表头/注释/历史条目，新条目带发布时间 + 说明）
   update-index:
     name: update github-release-pkg.txt
-    needs: build
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [build, build-joycode]
+    # 两个构建 job 按 tag 前缀二选一执行（另一个为 skipped），故用 always() + 结果判定
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && (needs.build.result == 'success' || needs.build-joycode.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - name: 追加 deb 下载链接（带发布时间 + 说明）到 github-release-pkg.txt
@@ -111,6 +244,7 @@ jobs:
               "workbuddy": "WorkBuddy CN",
               "trae-solo-cn": "Trae SOLO 国内版",
               "com.navicat.premiumlite": "Navicat Premium Lite",
+              "joycode": "JoyCode",
           }
           out = []
           for a in d.get("assets", []):
@@ -183,7 +317,7 @@ jobs:
   # 说明：本仓库是公有仓库，通知密钥一律存 Secrets（日志中自动 mask），切勿写进本文件。
   notify:
     name: notify
-    needs: [build, update-index]
+    needs: [build, build-joycode, update-index]
     if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
@@ -193,6 +327,7 @@ jobs:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
           BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_JC_RESULT: ${{ needs.build-joycode.result }}
           INDEX_RESULT: ${{ needs.update-index.result }}
         run: |
           set -uo pipefail
@@ -204,7 +339,11 @@ jobs:
           from datetime import datetime, timedelta, timezone
 
           tag = os.environ["TAG"]; repo = os.environ["REPO"]
-          build = os.environ["BUILD_RESULT"]; index = os.environ["INDEX_RESULT"]
+          index = os.environ["INDEX_RESULT"]
+          # tag 前缀区分产品：joycode-v* → JoyCode，其余 → WorkBuddy
+          is_jc = tag.startswith("joycode-")
+          product = "JoyCode" if is_jc else "WorkBuddy"
+          build = os.environ.get("BUILD_JC_RESULT", "") if is_jc else os.environ.get("BUILD_RESULT", "")
           ts = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M")
           try:
               rel = json.load(open("rel.json", encoding="utf-8"))
@@ -212,7 +351,7 @@ jobs:
           except Exception:
               rel = {}
           ok = build == "success"
-          lines = ["## 发布通知 · WorkBuddy Linux 包" + ("发布成功 ✅" if ok else "构建失败 ❌"), ""]
+          lines = ["## 发布通知 · %s Linux 包" % product + ("发布成功 ✅" if ok else "构建失败 ❌"), ""]
           lines.append("> 版本：**%s**" % tag)
           lines.append("> 时间：%s (UTC+8)" % ts)
           lines.append("> 仓库：%s" % repo)
@@ -234,7 +373,7 @@ jobs:
           def inline(s):
               s = html.escape(s)
               s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
-              return re.sub(r"\[(.+?)\]\((https?://[^)]+)\)", r'<a href="\2">\1</a>', s)
+              return re.sub(r"\[(.+?)\]\((https?://[^)]+)\)", "<a href=\"\\2\">\\1</a>", s)
 
           body, in_ul = [], False
           for l in lines:
@@ -251,15 +390,15 @@ jobs:
           if in_ul:
               body.append("</ul>")
           open("notice.html", "w", encoding="utf-8").write(
-              '<html><body style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
-              'font-size:14px;color:#222;line-height:1.6">\n' + "\n".join(body) + "\n</body></html>\n")
+              "<html><body style=\"font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;"
+              "font-size:14px;color:#222;line-height:1.6\">\n" + "\n".join(body) + "\n</body></html>\n")
           print(md)
           '
           cat notice.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: 发送通知（未配置的通道自动跳过）
         env:
-          TITLE: WorkBuddy Linux 发布通知
+          TITLE: ${{ startsWith(github.ref_name, 'joycode-') && 'JoyCode Linux 发布通知' || 'WorkBuddy Linux 发布通知' }}
           WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
           SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}

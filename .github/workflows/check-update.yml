@@ -1,19 +1,28 @@
 # ============================================================================
-# WorkBuddy 更新探测（公有 CI 仓库：testerxydw/github-release-pkg-url）
+# 上游更新探测（公有 CI 仓库：testerxydw/github-release-pkg-url）
 #
 # 本仓库同时承担：更新探测 + 拉取私有源码构建 + 产物发布 + 索引维护。
-# 流程：定时/手动 → 跑 check-update.sh 探测上游
-#       → 有新版则写 latest-windows-exe.txt、打 tag vX.Y.Z-1 并推送
-#       → tag push 触发本仓库 build-deb.yml（构建 → 发布 Release → 更新索引）
+# 流程：定时/手动 → 跑探测脚本
+#       → 有新版则写 latest-*-exe.txt、打 tag 并推送
+#       → tag push 触发本仓库 build-deb.yml（构建 → 发布 Release → 更新索引 → 通知）
+#
+# 两个探测目标（各自独立 job，互不影响）：
+#   ① WorkBuddy  check-update.sh    tag: vX.Y.Z-1          接口 copilot.tencent.com（匿名可探测）
+#   ② JoyCode    check-joycode.sh   tag: joycode-vX.Y.Z-1  接口 joycode-api.jd.com（**需登录态**）
 #
 # ⚠️ 必须配置 Secret：PRIVATE_REPO_PAT
 #   需同时具备：① 私有源码仓库 testerxydw/workbuddy-linux 的读权限
 #               ② 本仓库的 contents + workflows 写权限
 #   （GITHUB_TOKEN 推 tag 不会递归触发 workflow，故本 job 必须用 PAT 检出并推送）
-# ⚠️ 可选 Secret：WB_X_USER_ID（用于灰度探测）
+# ⚠️ 可选 Secret：WB_X_USER_ID（WorkBuddy 灰度探测）
 #   填入本机 WorkBuddy 登录账号的 userId（~/.workbuddy/app/sessions.json 的 sessions[0].userId）
 #   配置后 check-update.sh 才能探测到该账号被灰度到的版本（如 5.5.6）；不配置则仅探测 GA 版。
-#   该值会在 CI 日志中被 GitHub 自动 mask，不会明文泄露。
+# ⚠️ 可选 Secret：JOYCODE_COOKIE（JoyCode 自动探测，必需）
+#   JoyCode 的版本/下载接口匿名返回 {"code":401,"msg":"账号未登录"}，必须带登录 Cookie：
+#   浏览器登录 joycode.jd.com → F12 → Network → 任一 joycode-api.jd.com 请求 → 复制请求头 Cookie 整串。
+#   Cookie 会过期，失效时日志会打印「接口无响应/未找到字段」，重新复制即可；
+#   不配置时 JoyCode 仅支持手动触发（见下方 workflow_dispatch 的 joycode_exe_url 输入）。
+#   以上 Secret 值在 CI 日志中会被 GitHub 自动 mask，不会明文泄露。
 # ============================================================================
 name: check-update
 
@@ -23,13 +32,34 @@ on:
     #   → 北京时间 09/13/17/21/01/05 点（UTC+8）
     # 注意：GitHub cron 一律按 UTC，且实际触发可能延迟数分钟。
     - cron: '0 1,5,9,13,17,21 * * *'
-  workflow_dispatch: {}   # 允许在 Actions 页面手动触发，便于调试
+  workflow_dispatch:   # 允许在 Actions 页面手动触发，便于调试 / 手动指定 JoyCode 安装包
+    inputs:
+      target:
+        description: '探测目标'
+        type: choice
+        options:
+          - all
+          - workbuddy
+          - joycode
+        default: all
+      joycode_exe_url:
+        description: 'JoyCode 安装包直链或 release:owner/repo@tag/asset（填写后跳过接口探测，直接构建）'
+        type: string
+        required: false
+        default: ''
+      joycode_version:
+        description: 'JoyCode 版本号（留空则从安装包文件名解析，如 3.0.10）'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
   check:
+    name: check-workbuddy
+    if: ${{ github.event_name == 'schedule' || inputs.target == 'all' || inputs.target == 'workbuddy' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -49,3 +79,29 @@ jobs:
         env:
           WB_X_USER_ID: ${{ secrets.WB_X_USER_ID }}
         run: bash check-update.sh
+
+  check-joycode:
+    name: check-joycode
+    if: ${{ github.event_name == 'schedule' || inputs.target == 'all' || inputs.target == 'joycode' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出本仓库（使用 PAT，便于后续推 tag 能触发 build-deb）
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: 配置 git 身份
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 运行 JoyCode 更新检测
+        env:
+          JOYCODE_COOKIE: ${{ secrets.JOYCODE_COOKIE }}
+          JOYCODE_X_USER_ID: ${{ secrets.JOYCODE_X_USER_ID }}
+          JOYCODE_EXE_URL: ${{ inputs.joycode_exe_url }}
+          JOYCODE_VERSION: ${{ inputs.joycode_version }}
+        run: bash check-joycode.sh

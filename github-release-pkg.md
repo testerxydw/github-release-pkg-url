@@ -134,7 +134,56 @@ sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
 
 ---
 
+## 4. JoyCode（京东云 JoyCode IDE · Linux 重打包版）
+
+- **包名**：`joycode`
+- **版本**：`3.0.10-1`
+- **架构**：`amd64`
+- **安装包**：`joycode_3.0.10-1_amd64.deb`（约 154MB）
+- **适用系统**：Deepin 23 / UOS v25 / Debian 12+（amd64）
+- **上游**：官方 JoyCode Windows 安装包（`JoyCodeSetup.exe` 3.0.10，Inno Setup 6.4.0.1）
+- **下载地址**：构建完成后由本仓库 tag `joycode-v3.0.10-1` 的 Release 提供
+
+### 产品简介
+
+**JoyCode** 是京东云推出的企业级智能编码 IDE，基于 **VS Code 1.98.2** 深度定制（`product.json` 中 `vscodeVersion: 1.98.2`），内置 AI Agent、企业知识库与 MCP 生态。官方仅提供 Windows / macOS 安装包，**无官方 Linux 版**。
+
+本 `.deb` 为**非官方重打包版**：拆解官方 Windows 安装包后，用**同版本的 Linux Electron 运行时**替换，并把全部原生模块换成 Linux 二进制后重新打包，可在 Deepin / UOS / Debian 系 Linux 上原生运行。仅供学习交流使用。
+
+### 转制原理
+
+| 组件 | 来源 | 说明 |
+| --- | --- | --- |
+| `resources/app`（`out` / `extensions` / `product.json`） | 官方 Windows 安装包（Inno Setup，用 `innoextract` 1.10 解包） | 应用 JS 层、97 个内置扩展、品牌配置 |
+| Electron **35.6.0** Linux 运行时（Chromium 134.0.6998.205） | **VS Code 1.102.0** 官方 linux-x64 包 | 关键对齐点：VS Code 1.102.0 使用与 JoyCode **完全相同**的 Electron 35.6.0，故运行时与 `.so` 可直接复用（ABI 133 一致） |
+| 原生模块（`@vscode/spdlog`、`node-pty`、`@parcel/watcher`、`@vscode/sqlite3`、`kerberos`、`native-keymap`、`native-watchdog` 等 9 个） | VS Code 1.102.0 | 同 ABI，直接替换 |
+| `better-sqlite3@12.5.0` | 官方 CI 预编译 `electron-v133-linux-x64` | AI 功能索引库 |
+| `sqlite3@5.1.7` | 官方预编译 `napi-v6-linux-x64`（N-API，ABI 无关） | 数据库能力 |
+| `msal-node-runtime` | npm `@azure/msal-node-runtime` 的 `linux/ubuntu/x64` | 微软账号认证（含 `libmsalruntime.so`） |
+
+### 已落地的关键修复
+
+1. **Electron 版本精确对齐**：JoyCode 内置 Chromium 134 / Electron 35.6.0，必须使用同版本运行时，否则原生模块 ABI（133）不匹配导致加载失败。
+2. **CRLF 行尾修复**：Windows 包内 shell 脚本为 CRLF，Linux 下终端 shell integration 会报 `未预期的记号 "then"`，构建时统一转 LF（22 个脚本）。
+3. **CLI 路径改写**：`bin/joycode` 中 `ELECTRON` 原指向 `JoyCode.exe`，改为指向 Linux 二进制。
+4. **沙箱与桌面集成**：`postinst` 为 `chrome-sandbox` 设置 setuid，应用菜单项与图标（从 exe 提取 256×256）自动安装。
+
+### 安装与运行
+
+```bash
+sudo apt install ./joycode_3.0.10-1_amd64.deb
+joycode            # 或应用菜单搜索 JoyCode
+```
+
+### 已知限制
+
+- **自动更新不可用**：官方 Windows 更新器（`inno_updater.exe`）无法在 Linux 运行，升级需等待本仓库重新打包。
+- `report-log` 扩展缺少 `native-machine-id` 模块（Windows 原包同样缺失），仅影响日志上报。
+- 仅 `amd64`；Wayland 会话与部分输入法未充分验证（X11 下正常）。
+
+---
+
 ## 备注
 
 - 本文件为对下载地址的整理与说明，原始下载链接见同目录下的 `github-release-pkg.txt`。
-- 三个安装包均为 `amd64` 架构的 `.deb` 格式，适用于 Debian / Ubuntu / deepin / UOS 等系统，可通过 `sudo dpkg -i <包名>.deb` 安装。
+- 以上安装包均为 `amd64` 架构的 `.deb` 格式，适用于 Debian / Ubuntu / deepin / UOS 等系统，可通过 `sudo dpkg -i <包名>.deb` 安装。

@@ -1,0 +1,23 @@
+# JoyCode Windows 安装包直链（供 build-deb.yml 的 build-joycode job 下载）
+#
+# 格式（解析规则见 check-joycode.sh / build-deb.yml）：
+#   - 以 # 开头的行是注释；`# version: X.Y.Z` 记录当前基线版本
+#   - 非注释行是安装包来源，支持两种写法：
+#       1) https://.../JoyCodeIDE-3.0.10-xxxx.exe          任意可匿名下载的直链
+#       2) release:testerxydw/workbuddy-linux@<tag>/<asset> 从【私有仓库】Release 取（用 PAT 下载，推荐）
+#
+# 说明：JoyCode 官方下载页（joycode.jd.com/download）与版本接口均需登录，
+#       直链多为带签名的临时地址（会过期）。若想长期稳定构建，建议把 exe 上传到
+#       私有仓库 testerxydw/workbuddy-linux 的 Release，再用第 2 种写法引用。
+#
+# version: 3.0.10
+#
+# 当前未记录安装包来源 —— 首次构建请二选一：
+#   ① 把 JoyCodeSetup.exe 上传到私有仓库 Release：
+#        gh release create joycode-src-3.0.10 -R testerxydw/workbuddy-linux JoyCodeSetup.exe -t "JoyCode 3.0.10 源包" -n "仅供 CI 构建用"
+#      然后把下一行改成：release:testerxydw/workbuddy-linux@joycode-src-3.0.10/JoyCodeSetup.exe
+#   ② 在 Actions 页面手动运行 check-update workflow，填写 joycode_exe_url（+ joycode_version），
+#      脚本会自动写入本文件并打 tag 触发构建。
+#
+# 来源（取消注释并填写后生效）：
+# release:testerxydw/workbuddy-linux@joycode-src-3.0.10/JoyCodeSetup.exe

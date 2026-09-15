@@ -1,12 +1,26 @@
 # github-release-pkg-url
 
-本仓库整理从 GitHub Release 发布的三个 Linux `.deb` 安装包，提供下载索引与说明。
+本仓库整理从 GitHub Release 发布的 Linux `.deb` 安装包，提供下载索引与说明。
 
 ## 包含的软件包
 
 - **Navicat Premium Lite**（Navicat 免费版数据库管理工具）`com.navicat.premiumlite_17.3.10-2_amd64.deb`
 - **Trae SOLO 国内版**（字节跳动 AI 原生 IDE）`trae-solo-cn_0.1.63-3_amd64.deb`
 - **WorkBuddy CN**（腾讯 CodeBuddy AI 编程工作台 · Linux 重打包版）`com.xydw.workbuddy_5.5.6-1_amd64.deb`
+- **JoyCode**（京东云 JoyCode IDE · Linux 重打包版）`joycode_3.0.10-1_amd64.deb`
+
+## 自动构建流程
+
+本仓库同时承载「上游版本探测 → 拉取私有源码构建 → 发布 Release → 维护下载索引 → 通知」全流程：
+
+| 子项目 | 探测脚本 / tag | 构建 job | 产物 |
+| --- | --- | --- | --- |
+| WorkBuddy CN | `check-update.sh` → tag `vX.Y.Z-1` | `build-deb.yml` 的 `build`（x64 / arm64） | `com.xydw.workbuddy_*_<arch>.deb` |
+| JoyCode | `check-joycode.sh` → tag `joycode-vX.Y.Z-1` | `build-deb.yml` 的 `build-joycode`（amd64） | `joycode_*_amd64.deb` |
+
+- 定时探测每日 6 次；也可在 Actions 页面手动运行 `check-update` 工作流。
+- JoyCode 官方下载与版本接口**需要登录**：可配置 Secret `JOYCODE_COOKIE` 启用自动探测，或在手动运行时填写 `joycode_exe_url` 指定安装包来源。
+- 构建完成后 `update-index` 会自动把新 deb 链接追加进 [`github-release-pkg.txt`](github-release-pkg.txt)，`notify` 会把发布信息推到已配置的通知通道。
 
 ## 下载
 
