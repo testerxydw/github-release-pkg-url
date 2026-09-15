@@ -17,12 +17,13 @@
 # ⚠️ 可选 Secret：WB_X_USER_ID（WorkBuddy 灰度探测）
 #   填入本机 WorkBuddy 登录账号的 userId（~/.workbuddy/app/sessions.json 的 sessions[0].userId）
 #   配置后 check-update.sh 才能探测到该账号被灰度到的版本（如 5.5.6）；不配置则仅探测 GA 版。
-# ⚠️ 可选 Secret：JOYCODE_COOKIE（JoyCode 自动探测，必需）
-#   JoyCode 的版本/下载接口匿名返回 {"code":401,"msg":"账号未登录"}，必须带登录 Cookie：
-#   浏览器登录 joycode.jd.com → F12 → Network → 任一 joycode-api.jd.com 请求 → 复制请求头 Cookie 整串。
-#   Cookie 会过期，失效时日志会打印「接口无响应/未找到字段」，重新复制即可；
-#   不配置时 JoyCode 仅支持手动触发（见下方 workflow_dispatch 的 joycode_exe_url 输入）。
-#   以上 Secret 值在 CI 日志中会被 GitHub 自动 mask，不会明文泄露。
+# ⚠️ 可选 Secret：JOYCODE_COOKIE（JoyCode 接口探测，通常**不需要**）
+#   JoyCode 的官方版本接口匿名返回 {"code":401,"msg":"账号未登录"}，但**安装包地址是按版本号拼接的固定路径**：
+#     https://aichat.s3-ipv6.cn-north-1.jdcloud-oss.com/joycoder-ide/init/win32-x64/<版本>/JoyCodeSetup.exe
+#   OSS 禁止列目录（403）却允许匿名 GET/HEAD 具体对象、不存在的版本返回 404，
+#   因此 check-joycode.sh 默认用「候选版本号 HEAD 枚举」自动发现新版本与下载地址，**无需任何凭据**。
+#   仅当枚举漏检（大版本跳跃、下载路径变更）时才需要：配置本 Cookie 走官方接口，或手动触发并填 joycode_exe_url。
+#   Secret 值在 CI 日志中会被 GitHub 自动 mask，不会明文泄露。
 # ============================================================================
 name: check-update
 

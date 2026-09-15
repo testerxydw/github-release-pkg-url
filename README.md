@@ -19,7 +19,7 @@
 | JoyCode | `check-joycode.sh` → tag `joycode-vX.Y.Z-1` | `build-deb.yml` 的 `build-joycode`（amd64） | `joycode_*_amd64.deb` |
 
 - 定时探测每日 6 次；也可在 Actions 页面手动运行 `check-update` 工作流。
-- JoyCode 官方下载与版本接口**需要登录**：可配置 Secret `JOYCODE_COOKIE` 启用自动探测，或在手动运行时填写 `joycode_exe_url` 指定安装包来源。
+- JoyCode 安装包地址按版本号拼接（`.../init/win32-x64/<版本>/JoyCodeSetup.exe`）：探测脚本用**候选版本号 HEAD 枚举**自动发现新版与下载地址，**无需任何凭据**；若枚举漏检（大版本跳跃），可配置 Secret `JOYCODE_COOKIE` 走官方接口，或手动运行并填写 `joycode_exe_url`。
 - 构建完成后 `update-index` 会自动把新 deb 链接追加进 [`github-release-pkg.txt`](github-release-pkg.txt)，`notify` 会把发布信息推到已配置的通知通道。
 
 ## 下载

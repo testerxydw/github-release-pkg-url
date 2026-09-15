@@ -19,7 +19,7 @@ This repository also hosts the full pipeline: upstream version detection → bui
 | JoyCode | `check-joycode.sh` → tag `joycode-vX.Y.Z-1` | `build-joycode` (amd64) in `build-deb.yml` | `joycode_*_amd64.deb` |
 
 - Detection runs 6 times a day; the `check-update` workflow can also be run manually from the Actions tab.
-- JoyCode's download/version API **requires a login**: set the `JOYCODE_COOKIE` secret for automatic detection, or pass `joycode_exe_url` when triggering the workflow manually.
+- JoyCode's installer URL is version-templated (`.../init/win32-x64/<version>/JoyCodeSetup.exe`); the detector probes candidate versions with HEAD requests, so **no credentials are required**. If a big version jump is missed, set the `JOYCODE_COOKIE` secret or pass `joycode_exe_url` when triggering the workflow manually.
 - After a build, `update-index` appends the new deb links to [`github-release-pkg.txt`](github-release-pkg.txt) and `notify` pushes the release info to the configured channels.
 
 ## Download
