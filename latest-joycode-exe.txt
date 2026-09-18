@@ -1,15 +1,3 @@
-# JoyCode Windows 安装包直链（供 build-deb.yml 的 build-joycode job 下载）
-#
-# 格式（解析规则见 check-joycode.sh）：
-#   - `#` 开头是注释；`# version: X.Y.Z` 记录当前基线版本
-#   - 非注释行是安装包来源，支持两种写法：
-#       1) https://.../JoyCodeSetup.exe                    任意可匿名下载的直链
-#       2) release:owner/repo@tag/asset                    从私有仓库 Release 取（用 PAT 下载）
-#
-# 自动探测：JoyCode 的安装包地址是按版本号拼接的固定路径 ——
-#   https://aichat.s3-ipv6.cn-north-1.jdcloud-oss.com/joycoder-ide/init/win32-x64/<版本>/JoyCodeSetup.exe
-#   OSS 禁止列目录（403）但允许匿名 GET/HEAD 具体对象、不存在的版本返回 404，
-#   因此 check-joycode.sh 会按候选版本号逐个 HEAD 探测，自动发现新版本与下载地址。
-#
-# version: 3.0.10
-https://aichat.s3-ipv6.cn-north-1.jdcloud-oss.com/joycoder-ide/init/win32-x64/3.0.10/JoyCodeSetup.exe
+# JoyCode Windows 安装包直链
+# version: 3.0.11
+https://aichat.s3-ipv6.cn-north-1.jdcloud-oss.com/joycoder-ide/init/win32-x64/3.0.11/JoyCodeSetup.exe
