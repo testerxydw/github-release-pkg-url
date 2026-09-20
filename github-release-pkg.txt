@@ -29,3 +29,6 @@ https://github.com/testerxydw/github-release-pkg-url/releases/download/joycode-v
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.0-1/com.xydw.workbuddy_5.6.0-1_amd64.deb
 # 2026-09-20 01:49 WorkBuddy CN 5.6.0-1 (arm64)
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.0-1/com.xydw.workbuddy_5.6.0-1_arm64.deb
+
+# 2026-09-20 10:37 WorkBuddy CN 5.6.0-2 原味版（不打 UI 补丁，仅观感差异）(amd64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/nopatch-v5.6.0-2/com.xydw.workbuddy_5.6.0-2_amd64.deb
