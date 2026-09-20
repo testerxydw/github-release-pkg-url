@@ -35,3 +35,18 @@
   安装包来源记在 `latest-joycode-exe.txt`（支持直链或 `release:owner/repo@tag/asset` 从私有仓库 Release 取）。
 - 写 workflow 内嵌 `python3 -c '...'` 时，**python 代码里绝不能出现单引号**（会提前结束 bash 字符串），
   否则该 step 必失败；用双引号 + 转义替代（详见 2026-09-15 记忆，已修 notify 的两处历史遗留）。
+
+## WorkBuddy 每版双包（2026-09-20 起，commit eb6fb25）
+- `build` job 每次同时产出**两个包**（每架构各一）：
+  - 默认**补丁版**：`com.xydw.workbuddy_<ver>_<arch>.deb` —— 打 A/B/C 三段 app.asar UI 补丁，UI 与 Windows 对齐
+  - **原味版**：`com.xydw.workbuddy_<ver2>-nopatch_<arch>.deb` —— `build.sh --no-patch`，仅观感差异、功能一致
+- 两次构建按 `deb-pkg/DEBIAN/control` 里的版本**自动错开 revision**（实测 `5.6.0-2` / `5.6.0-3`），两包可共存；
+  补丁版先 `mv` 到 `/tmp/deb-patched/` 暂存，避免被第二次构建覆盖。
+- `update-index` **无需改动**：资产名仍满足 `包名_版本_架构.deb` 解析规则（`-nopatch` 后缀不含下划线），
+  会自动为两个包各追加一条索引，说明形如 `WorkBuddy CN 5.6.0-3-nopatch (amd64)`。
+- Release 上传 glob 保持 `src/com.xydw.workbuddy_*_<debarch>.deb`，两个包都匹配。
+- **手动验证法**：`gh workflow run build-deb.yml -R testerxydw/github-release-pkg-url --ref master`
+  → 只跑 `build`（x64/arm64 并行），`build-joycode` / `update-index` / `notify` 全部 skip（它们要求 `refs/tags/`）
+  → **只构建、不发布、不写索引**，安全。实测 run `35484664219` 全绿，约 3.5 分钟/架构。
+- 手工发布"本地构建包"（如原味包）时，**tag 必须避开 `v*` / `joycode-v*`**（例：`nopatch-v5.6.0-2`），
+  否则会触发 CI 构建并产出**同名资产**覆盖上传的文件。
