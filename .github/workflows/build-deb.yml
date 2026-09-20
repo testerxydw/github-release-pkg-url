@@ -2,7 +2,8 @@
 # deb 构建与发布（公有 CI 仓库：testerxydw/github-release-pkg-url）
 #
 # 两个子项目共用本 workflow，按 tag 前缀分流：
-#   - WorkBuddy CN  tag v*              → job: build（矩阵 x64/arm64）+ update-index + notify
+#   - WorkBuddy CN  tag v*              → job: build（矩阵 x64/arm64，**每版出双包**：
+#                                         默认补丁版 + `-nopatch` 原味版）+ update-index + notify
 #   - JoyCode       tag joycode-v*      → job: build-joycode（仅 amd64）+ update-index + notify
 #
 # 触发：本仓库 push tag（v* / joycode-v*）；或手动 workflow_dispatch
@@ -72,15 +73,31 @@ jobs:
           echo "下载 Windows 安装包: $FNAME"
           curl -fL "$URL" -o "src/$FNAME"
 
-      - name: 构建 (${{ matrix.arch }})
-        run: cd src && bash build.sh --arch ${{ matrix.arch }} --no-install
+      # ---- 每版出双包：① 默认补丁版（UI 与 Windows 对齐）② 原味版（--no-patch，仅观感差异，功能一致）----
+      # 连续两次构建会按 deb-pkg/DEBIAN/control 里的版本自动错开 revision（如 5.6.0-2 / 5.6.0-3），
+      # 两包可共存互不覆盖；原味包再追加 -nopatch 后缀便于区分。
+      # ⚠️ 后缀不能含下划线 —— update-index 用 `包名_版本_架构.deb` 解析生成索引说明。
+      - name: 构建 deb（补丁版 · ${{ matrix.arch }}）
+        run: |
+          cd src && bash build.sh --arch ${{ matrix.arch }} --no-install
+          mkdir -p /tmp/deb-patched
+          mv com.xydw.workbuddy_*_${{ matrix.debarch }}.deb /tmp/deb-patched/
+          echo "补丁版产物："; ls -lh /tmp/deb-patched/
 
-      - name: 发布 deb 到本仓库 Release
+      - name: 构建 deb（原味版 --no-patch · ${{ matrix.arch }}）
+        run: |
+          cd src && bash build.sh --arch ${{ matrix.arch }} --no-install --no-patch
+          f="$(ls com.xydw.workbuddy_*_${{ matrix.debarch }}.deb | head -1)"
+          mv "$f" "${f%_${{ matrix.debarch }}.deb}-nopatch_${{ matrix.debarch }}.deb"
+          mv /tmp/deb-patched/*.deb ./
+          echo "本次将发布："; ls -lh com.xydw.workbuddy_*.deb
+
+      - name: 发布 deb 到本仓库 Release（补丁版 + 原味版）
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          # 仅发布 deb 主产物（不发布任何解包目录/源码）
+          # 仅发布 deb 主产物（不发布任何解包目录/源码）：补丁版 + -nopatch 原味版
           files: src/com.xydw.workbuddy_*_${{ matrix.debarch }}.deb
           fail_on_unmatched_files: false
 
