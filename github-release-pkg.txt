@@ -25,3 +25,7 @@ https://github.com/testerxydw/github-release-pkg-url/releases/download/2026-09-0
 https://github.com/testerxydw/github-release-pkg-url/releases/download/joycode-v3.0.10-1/joycode_3.0.10-1_amd64.deb
 # 2026-09-18 19:39 JoyCode 3.0.11-1 (amd64)
 https://github.com/testerxydw/github-release-pkg-url/releases/download/joycode-v3.0.11-1/joycode_3.0.11-1_amd64.deb
+# 2026-09-20 01:49 WorkBuddy CN 5.6.0-1 (amd64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.0-1/com.xydw.workbuddy_5.6.0-1_amd64.deb
+# 2026-09-20 01:49 WorkBuddy CN 5.6.0-1 (arm64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.0-1/com.xydw.workbuddy_5.6.0-1_arm64.deb
