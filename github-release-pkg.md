@@ -57,10 +57,17 @@ sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
 ## 2. Trae SOLO 国内版（字节跳动 AI 原生 IDE）
 
 - **包名**：`trae-solo-cn`
-- **版本**：`0.1.63-3`
+- **版本**：`0.1.67-10`
 - **架构**：`amd64`
-- **安装包**：`trae-solo-cn_0.1.63-3_amd64.deb`
-- **下载地址**：<https://github.com/testerxydw/github-release-pkg-url/releases/download/traework/trae-solo-cn_0.1.63-3_amd64.deb>
+- **安装包**：`trae-solo-cn_0.1.67-10_amd64.deb`
+- **下载地址**：<https://github.com/testerxydw/github-release-pkg-url/releases/download/traework/trae-solo-cn_0.1.67-10_amd64.deb>
+
+### 转制修复（0.1.67-10）
+
+- **流式回显乱序保护**：修复任务过程"只能结束后回显"、过程不实时显示的问题（frontier 过期快照覆盖 stream 新状态）
+- **work 模式 Linux 兼容**：Linux 构建的 ai-agent 无 VM 后端（`infrastructure/vm/unsupported.rs` 空壳，订阅报
+  `LiteError 992600 VM manager not initialized`），通过 API 入口把 work 会话重定向到本地沙箱执行路径（与 code 模式同款），任务可正常执行并实时回显
+- **异常通知去重**：订阅出错重试期间系统通知按会话去重，不再刷屏
 
 ### 产品简介
 
