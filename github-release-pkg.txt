@@ -35,3 +35,11 @@ https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.0-3/
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.0-3/com.xydw.workbuddy_5.6.0-3-nopatch_arm64.deb
 # 2026-09-21 18:14 Trae SOLO 国内版 0.1.67-10 (amd64)
 https://github.com/testerxydw/github-release-pkg-url/releases/download/traework/trae-solo-cn_0.1.67-10_amd64.deb
+# 2026-09-22 05:55 WorkBuddy CN 5.6.2-1 (amd64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.2-1/com.xydw.workbuddy_5.6.2-1_amd64.deb
+# 2026-09-22 05:54 WorkBuddy CN 5.6.2-1 (arm64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.2-1/com.xydw.workbuddy_5.6.2-1_arm64.deb
+# 2026-09-22 05:55 WorkBuddy CN 5.6.2-2-nopatch (amd64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.2-1/com.xydw.workbuddy_5.6.2-2-nopatch_amd64.deb
+# 2026-09-22 05:54 WorkBuddy CN 5.6.2-2-nopatch (arm64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.6.2-1/com.xydw.workbuddy_5.6.2-2-nopatch_arm64.deb
