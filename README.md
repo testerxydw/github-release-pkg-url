@@ -5,7 +5,7 @@
 ## 包含的软件包
 
 - **Navicat Premium Lite**（Navicat 免费版数据库管理工具）`com.navicat.premiumlite_17.3.10-2_amd64.deb`
-- **Trae SOLO 国内版**（字节跳动 AI 原生 IDE）`trae-solo-cn_0.1.67-10_amd64.deb`
+- **Trae SOLO 国内版**（字节跳动 AI 原生 IDE）`trae-solo-cn_0.1.69-7_amd64.deb`
 - **WorkBuddy CN**（腾讯 CodeBuddy AI 编程工作台 · Linux 重打包版）`com.xydw.workbuddy_5.5.6-1_amd64.deb`
 - **JoyCode**（京东云 JoyCode IDE · Linux 重打包版）`joycode_3.0.10-1_amd64.deb`
 

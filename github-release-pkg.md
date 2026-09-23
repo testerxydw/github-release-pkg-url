@@ -57,12 +57,27 @@ sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
 ## 2. Trae SOLO 国内版（字节跳动 AI 原生 IDE）
 
 - **包名**：`trae-solo-cn`
-- **版本**：`0.1.67-10`
+- **版本**：`0.1.69-7`
 - **架构**：`amd64`
-- **安装包**：`trae-solo-cn_0.1.67-10_amd64.deb`
-- **下载地址**：<https://github.com/testerxydw/github-release-pkg-url/releases/download/traework/trae-solo-cn_0.1.67-10_amd64.deb>
+- **安装包**：`trae-solo-cn_0.1.69-7_amd64.deb`
+- **下载地址**：<https://github.com/testerxydw/github-release-pkg-url/releases/download/traework/trae-solo-cn_0.1.69-7_amd64.deb>
 
-### 转制修复（0.1.67-10）
+### 转制修复（0.1.69-7）
+
+- **畸形订阅包不再中断流**：0.1.69 把「无 `event` 字段的 `chat.subscribe` 包」判为致命错误，
+  表现为发消息后立刻弹「服务器错误，请稍后重试。(-1)」+「异常打断」，而任务实际仍在后台执行；
+  本版恢复 0.1.67 的容忍行为（只告警、忽略该包），事件流可继续，切模式回来不再只剩错误提示
+- **work 模式 shell 执行策略**：soloLite 形态改为上报 `shell_exec`，
+  避开 Linux 上不可用的 ToolHost 链路（`ToolHost is not running for shell_execute_strategy=tool_host`）；
+  另已实测：把主进程 `ENABLE_TOOLHOST` 强行置 1 无效，故保持上游 Linux 行为
+- **完成通知去重**：服务端高频重建流（`session_updated` 毫秒级推送）会反复触发「任务完成」系统通知，
+  本版按会话 60 秒去重（`solo-lite/551.*.mjs` 与 `ai-modules-chat/index.mjs` 两份 bundle 均已打）
+- **打包默认限制 8 核**：`--limit-cpu N`（默认 8，`0` 取消），避免解包 / `dpkg-deb` 压缩阶段挤卡桌面
+
+> 已知残留：服务端仍可能按 `tool_host` 路由 shell 命令（Linux 上 toolhost 与 ai-agent 的握手未适配，属上游侧），
+> 偶发时该条命令无法执行，重试或改用 code 模式即可。
+
+### 历史修复（0.1.67-10）
 
 - **流式回显乱序保护**：修复任务过程"只能结束后回显"、过程不实时显示的问题（frontier 过期快照覆盖 stream 新状态）
 - **work 模式 Linux 兼容**：Linux 构建的 ai-agent 无 VM 后端（`infrastructure/vm/unsupported.rs` 空壳，订阅报
