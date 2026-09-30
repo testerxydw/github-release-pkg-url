@@ -55,22 +55,27 @@ jobs:
           ref: main
           path: src
 
-      - name: 安装 Node.js（编译 better-sqlite3 需要 npm）
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: 安装系统依赖
         run: |
           sudo apt-get update -y
           sudo apt-get install -y rsync dpkg-dev python3 curl
 
-      - name: 下载官方 Linux deb 到 src/
+      - name: 下载官方 Linux deb 到 src/（按架构选源）
+        env:
+          WB_ARCH: ${{ matrix.arch }}
         run: |
-          URL="$(cat latest-workbuddy-deb.txt | tr -d '[:space:]')"
-          test -n "$URL" || { echo "缺少 latest-workbuddy-deb.txt"; exit 1; }
+          BASE="$(cat latest-workbuddy-deb.txt | tr -d '[:space:]')"
+          test -n "$BASE" || { echo "缺少 latest-workbuddy-deb.txt"; exit 1; }
+          # 版本记录文件只维护 x64 直链；arm64 按「同版本·同构建号」派生：
+          #   linux-x64-deb           -> linux-arm64-deb
+          #   WorkBuddy-linux-x64-deb -> WorkBuddy-linux-arm64-deb
+          if [ "$WB_ARCH" = "arm64" ]; then
+            URL="$(printf '%s' "$BASE" | sed -E 's#linux-x64-deb#linux-arm64-deb#g; s#WorkBuddy-linux-x64-deb#WorkBuddy-linux-arm64-deb#g')"
+          else
+            URL="$BASE"
+          fi
           FNAME="$(basename "${URL%%\?*}")"
-          echo "下载官方 Linux deb: $FNAME"
+          echo "下载官方 Linux deb($WB_ARCH): $FNAME"
           curl -fL "$URL" -o "src/$FNAME"
 
       # ---- 每版出双包：① 默认补丁版（UI 与 Windows 对齐）② 原味版（--no-patch，仅观感差异，功能一致）----
