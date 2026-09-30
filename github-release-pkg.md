@@ -27,10 +27,10 @@
 ### 已落地的关键修复
 
 1. **整体复用官方 Linux deb 的 Electron / 原生模块**：官方 Linux deb 已自带与 `app.asar` ABI 一致的 Electron 与主进程原生模块（含对话所需的 Local NativeRuntime），直接 `dpkg-deb -x` 解包整体复制，**禁止用 GitHub Electron 替换 / 重编译**，否则原生模块 ABI 不匹配。
-2. **标题栏对齐 Windows**：补三处 renderer Windows 专属分支 + 左槽 CSS，使 Linux 标题栏观感与 Windows 一致（`--no-patch` 可出原味版）。
+2. **标题栏对齐 Windows**：补三处 renderer Windows 专属分支 + 左槽 CSS，使 Linux 标题栏观感与 Windows 一致。默认即「原味重打包」（不补丁）；仅 `bash build.sh --patch` 才打此补丁。
 3. **沙箱回退**：无 root 或 `chrome-sandbox` 未 setuid 时，启动脚本自动追加 `--no-sandbox`。
 4. **补齐运行时依赖**：复制 `chrome_crashpad_handler` 避免启动 FATAL，`ulimit -n 65535` 提高文件描述符上限。
-5. **Windows/macOS 冗余剔除**：`--slim` 默认开启，删除 exe/dll/framework 与跨平台预编译（win32*/darwin*/msvc* 目录），仅保留 `linux_x64`，规避误删跨平台 Node 代码导致的扩展崩溃。
+5. **Windows/macOS 冗余剔除**：`--slim` 默认关闭（默认仅解包重打包，不剔除）。需显式 `bash build.sh --slim` 才删除 exe/dll/framework 与跨平台预编译（win32*/darwin*/msvc* 目录），仅保留 `linux_x64`，规避误删跨平台 Node 代码导致的扩展崩溃。
 
 ### 安装与运行
 

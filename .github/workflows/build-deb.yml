@@ -90,7 +90,7 @@ jobs:
       # ⚠️ 后缀不能含下划线 —— update-index 用 `包名_版本_架构.deb` 解析生成索引说明。
       - name: 构建 deb（补丁版 · ${{ matrix.arch }}）
         run: |
-          cd src && bash build.sh --arch ${{ matrix.arch }} --no-install
+          cd src && bash build.sh --arch ${{ matrix.arch }} --no-install --patch
           mkdir -p /tmp/deb-patched
           mv com.xydw.workbuddy_*_${{ matrix.debarch }}.deb /tmp/deb-patched/
           echo "补丁版产物："; ls -lh /tmp/deb-patched/
