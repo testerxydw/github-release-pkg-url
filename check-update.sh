@@ -8,8 +8,17 @@
 #     （因此检出/推送必须用 PAT：GITHUB_TOKEN 推 tag 不会触发其它 workflow）
 #
 # 依赖：curl / git / python3（解析本机登录态时用）
-# 用法：bash check-update.sh            # 探测 + 有更新则写文件/打 tag/推送
-#       DRY_RUN=1 bash check-update.sh  # 只打印将要执行的动作，不落盘/不推送
+# 用法：bash check-update.sh                        # 探测(接口+直链监控) + 有更新则写文件/打 tag/推送
+#       bash check-update.sh --url <直链>            # 直链模式：录入人工/社区发现的新版直链(校验可达+解析版本+写latest+打tag)
+#       bash check-update.sh --url <直链> --force    # 强制录入(即使版本不高于当前，用于修正/重录)
+#       DRY_RUN=1 bash check-update.sh               # 只打印将要执行的动作，不落盘/不推送
+#
+# 关于「直链模式」为何需要手工录入：
+#   下载站(download.codebuddy.cn) 是 COS 对象存储，经腾讯云 CDN 后「列举 query 被吞」
+#   （GET /?prefix= 只返回桶位置而非文件列表），既无目录列举也无 latest 别名，且文件名
+#   必须带精确 commit hash —— 因此无法自动枚举「比 latest 更高」的 build。v2/update 接口对
+#   linux 通道又有「推荐版挡板」(当前 5.5.6)，不向低版本主动推「下载站已发布但未设推荐」的
+#   幽灵版(如 5.6.2)。故此类版本只能由人/社区发现直链后，用 --url 半自动录入。
 #
 # 灰度探测（可选，默认匿名只探测 GA 版）：
 #   接口 v2/update 按 x-user-id 做灰度分桶，带真实 userId 才能看到该账号被灰度到的版本。
@@ -17,6 +26,16 @@
 #   （实测：仅带 x-user-id 请求头即可命中灰度，无需 Authorization/cookie；CI 日志中该值会被 secret 自动 mask）
 # ============================================================================
 set -uo pipefail
+
+# ---------- 0. 参数解析 ----------
+URL_OVERRIDE=""; FORCE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --url)   URL_OVERRIDE="$2"; shift 2;;
+    --force) FORCE=1; shift;;
+    *) shift;;
+  esac
+done
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
@@ -36,6 +55,21 @@ CUR_DEB=$(grep -oE 'WorkBuddy-linux-x64-deb-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a
 CUR_FULL=$(echo "$CUR_DEB" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
 [[ -n "$CUR_FULL" ]] || die "无法解析当前 Linux deb 版本（$URL_FILE）"
 log "当前仓库 Linux deb 版本: $CUR_FULL"
+
+# ---------- 1.2 下载站直链可达性监控 ----------
+# 下载站（download.codebuddy.cn，COS 对象存储）无目录列举、无 latest 别名，
+# 文件名必须带精确 commit hash，无法靠枚举 build 自动发现「最新」。因此本脚本以
+# latest-workbuddy-deb.txt 为权威版本源：仅校验「当前记录直链是否仍可访问」，
+# 不可达时告警但不自动改写（避免用错误默认值覆盖人工维护的版本）。
+CUR_URL=$(head -1 "$URL_FILE" | tr -d '[:space:]')
+# 用 Range 头只取 1 字节，避免下载整个 283MB 导致超时；接受 200/206 视为可达
+HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -r 0-0 "$CUR_URL" 2>/dev/null)
+HTTP="${HTTP:-000}"
+if [[ "$HTTP" == "200" || "$HTTP" == "206" ]]; then
+    log "当前下载站直链可达 (HTTP $HTTP)。"
+else
+    log "警告——当前直链 HTTP=$HTTP（不可达/失效），请人工核查 $URL_FILE；脚本不自动改写。"
+fi
 
 # ---------- 1.5 解析登录态（灰度 cohort 探测用） ----------
 # 优先级：环境变量 WB_X_USER_ID（CI secret 注入）> 本机已登录的 WorkBuddy userData
@@ -60,27 +94,41 @@ AUTH_Q=""
 [[ -n "$WB_X_TENANT_ID" ]] && AUTH_Q="${AUTH_Q}&x-tenant-id=${WB_X_TENANT_ID}"
 log "登录态: $([[ -n "$WB_X_USER_ID" ]] && echo "已带 x-user-id（灰度探测）" || echo "匿名（仅 GA 版）")"
 
-# ---------- 2. 探测更新接口 ----------
-FEED_URL="${API}?platform=${PLATFORM}&version=${CUR_FULL}${AUTH_Q}"
-if [[ -n "$WB_X_USER_ID" ]]; then
-    MASKED="${WB_X_USER_ID:0:8}***"
-    log "探测更新接口（带登录态）: ${API}?platform=${PLATFORM}&version=${CUR_FULL}&x-user-id=${MASKED}"
+# ---------- 2. 探测更新（直链模式 / 接口模式） ----------
+if [[ -n "$URL_OVERRIDE" ]]; then
+    # 直链模式（源C）：人工/社区发现的新版直链。校验可达 + 解析版本，跳过接口探测。
+    NEW_URL="$URL_OVERRIDE"
+    NEW_DEB="$(basename "${NEW_URL%%\?*}")"
+    NEW_FULL="$(echo "$NEW_DEB" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)"
+    [[ -n "$NEW_FULL" ]] || die "无法从直链解析版本号: $NEW_URL"
+    HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 -r 0-0 "$NEW_URL" 2>/dev/null)
+    HTTP="${HTTP:-000}"
+    if [[ "$HTTP" != "200" && "$HTTP" != "206" ]]; then
+        die "直链不可达 (HTTP $HTTP)，拒绝录入: $NEW_URL"
+    fi
+    log "直链模式：录入用户直链 版本=$NEW_FULL 可达性OK"
 else
-    log "探测更新接口（匿名）: $FEED_URL"
+    # 接口模式（源A）：v2/update 探测（受 linux 推荐版挡板限制，仅能发现官方设为推荐版的更新）
+    FEED_URL="${API}?platform=${PLATFORM}&version=${CUR_FULL}${AUTH_Q}"
+    if [[ -n "$WB_X_USER_ID" ]]; then
+        MASKED="${WB_X_USER_ID:0:8}***"
+        log "探测更新接口（带登录态）: ${API}?platform=${PLATFORM}&version=${CUR_FULL}&x-user-id=${MASKED}"
+    else
+        log "探测更新接口（匿名）: $FEED_URL"
+    fi
+    RESP=$(curl -s --max-time 20 "$FEED_URL" || true)
+    if [[ -z "$RESP" || "$RESP" == "{}" || "$RESP" == "[]" ]]; then
+        log "接口返回空 —— 当前已是最新，无需更新。"
+        exit 0
+    fi
+    NEW_FULL=$(echo "$RESP" | grep -oE '"version":"[0-9][0-9.]*"' | head -1 | sed -E 's/"version":"//; s/"//' || true)
+    NEW_URL=$( echo "$RESP" | grep -oE '"url":"https?://[^"]+"'     | head -1 | sed -E 's/"url":"//; s/"//' || true)
+    [[ -n "$NEW_FULL" && -n "$NEW_URL" ]] || {
+        log "接口返回缺少 version/url 字段，视为无更新。原始响应: $RESP"
+        exit 0
+    }
+    log "接口返回最新版本: $NEW_FULL"
 fi
-RESP=$(curl -s --max-time 20 "$FEED_URL" || true)
-if [[ -z "$RESP" || "$RESP" == "{}" || "$RESP" == "[]" ]]; then
-    log "接口返回空 —— 当前已是最新，无需更新。"
-    exit 0
-fi
-
-NEW_FULL=$(echo "$RESP" | grep -oE '"version":"[0-9][0-9.]*"' | head -1 | sed -E 's/"version":"//; s/"//' || true)
-NEW_URL=$( echo "$RESP" | grep -oE '"url":"https?://[^"]+"'     | head -1 | sed -E 's/"url":"//; s/"//' || true)
-[[ -n "$NEW_FULL" && -n "$NEW_URL" ]] || {
-    log "接口返回缺少 version/url 字段，视为无更新。原始响应: $RESP"
-    exit 0
-}
-log "接口返回最新版本: $NEW_FULL"
 
 # ---------- 3. 版本比较（4 段整数，逐段比较） ----------
 ver_gt() {  # ver_gt <new> <cur> —— new 严格大于 cur 时返回 0
@@ -94,10 +142,11 @@ ver_gt() {  # ver_gt <new> <cur> —— new 严格大于 cur 时返回 0
     done
     return 1
 }
-if ! ver_gt "$NEW_FULL" "$CUR_FULL"; then
-    log "接口版本($NEW_FULL)未高于当前($CUR_FULL) —— 无更新。"
+if [[ "$FORCE" != "1" ]] && ! ver_gt "$NEW_FULL" "$CUR_FULL"; then
+    log "版本($NEW_FULL)未高于当前($CUR_FULL) —— 无更新（直链模式可用 --force 强制录入）。"
     exit 0
 fi
+[[ "$FORCE" == "1" ]] && log "已用 --force，强制录入 $NEW_FULL（覆盖当前 $CUR_FULL）。"
 
 # ---------- 4. 有更新：计算版本与 tag ----------
 APP_V="$(echo "$NEW_FULL" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
