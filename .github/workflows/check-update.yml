@@ -3,7 +3,7 @@
 #
 # 本仓库同时承担：更新探测 + 拉取私有源码构建 + 产物发布 + 索引维护。
 # 流程：定时/手动 → 跑探测脚本
-#       → 有新版则写 latest-*-exe.txt、打 tag 并推送
+#       → 有新版则写 latest-workbuddy-deb.txt、打 tag 并推送
 #       → tag push 触发本仓库 build-deb.yml（构建 → 发布 Release → 更新索引 → 通知）
 #
 # 两个探测目标（各自独立 job，互不影响）：

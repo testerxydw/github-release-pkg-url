@@ -3,7 +3,7 @@
 # WorkBuddy 更新探测器（公有 CI 仓库专用精简版）
 #
 # 与私有源码仓库 check-update.sh 的区别：
-#   - 只维护本仓库的 latest-windows-exe.txt，不改动任何 RELEASE_NOTES.md
+#   - 只维护本仓库的 latest-workbuddy-deb.txt（官方 Linux deb 直链），不改动任何 RELEASE_NOTES.md
 #   - 检测到新版本后，在【本仓库】打 tag 并推送，触发本仓库 build-deb.yml
 #     （因此检出/推送必须用 PAT：GITHUB_TOKEN 推 tag 不会触发其它 workflow）
 #
@@ -22,8 +22,8 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
 API="https://copilot.tencent.com/v2/update"
-PLATFORM="workbuddy-win32-x64-user"
-URL_FILE="latest-windows-exe.txt"
+PLATFORM="workbuddy-linux-x64-deb"
+URL_FILE="latest-workbuddy-deb.txt"
 DRY_RUN="${DRY_RUN:-0}"
 
 log() { echo "[check-update] $*"; }
@@ -31,11 +31,11 @@ die() { echo "[check-update][错误] $*" >&2; exit 1; }
 
 [[ -f "$URL_FILE" ]] || die "缺少 $URL_FILE"
 
-# ---------- 1. 读取本仓库当前 Windows 版本 ----------
-CUR_EXE=$(grep -oE 'WorkBuddy-win32-x64-user-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+\.exe' "$URL_FILE" | head -1 || true)
-CUR_FULL=$(echo "$CUR_EXE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
-[[ -n "$CUR_FULL" ]] || die "无法解析当前 Windows 版本（$URL_FILE）"
-log "当前仓库 Windows 版本: $CUR_FULL"
+# ---------- 1. 读取本仓库当前 Linux deb 版本 ----------
+CUR_DEB=$(grep -oE 'WorkBuddy-linux-x64-deb-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+\.deb' "$URL_FILE" | head -1 || true)
+CUR_FULL=$(echo "$CUR_DEB" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
+[[ -n "$CUR_FULL" ]] || die "无法解析当前 Linux deb 版本（$URL_FILE）"
+log "当前仓库 Linux deb 版本: $CUR_FULL"
 
 # ---------- 1.5 解析登录态（灰度 cohort 探测用） ----------
 # 优先级：环境变量 WB_X_USER_ID（CI secret 注入）> 本机已登录的 WorkBuddy userData
@@ -125,7 +125,7 @@ git add "$URL_FILE"
 git commit -m "chore: 上游更新至 WorkBuddy ${NEW_FULL}" >/dev/null
 git tag -a "$NEW_TAG" -m "WorkBuddy ${APP_V} Linux 打包 (${NEW_TAG})
 
-基于上游 Windows 安装包转制:
+基于上游官方 Linux deb（整体转制 + 精简）:
   $(basename "${NEW_URL%%\?*}")
 下载:
   ${NEW_URL}"

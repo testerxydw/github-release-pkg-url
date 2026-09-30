@@ -13,27 +13,24 @@
 
 ### 产品简介
 
-**WorkBuddy** 是腾讯 **CodeBuddy** 的 AI 编程工作台产品，提供 AI Agent、智能编程辅助、工作台多模态创作等能力。官方仅发布 Windows / macOS 安装包，**无官方 Linux 版**。
+**WorkBuddy** 是腾讯 **CodeBuddy** 的 AI 编程工作台产品，提供 AI Agent、智能编程辅助、工作台多模态创作等能力。官方已发布 Linux deb（`WorkBuddy-linux-x64-deb-*.deb`），但仍以 Windows / macOS 为先。
 
-本 `.deb` 包为**非官方重打包版**：拆解官方 **Windows NSIS 安装包**（`WorkBuddy-win32-x64-user-5.4.7.exe`），保留跨平台的 JS 资源层（`app.asar` / `app.asar.unpacked`），替换为 Linux 平台的 Electron 运行时与原生二进制后重新打包，使其可在 Deepin / UOS / Debian 系 Linux 上运行。仅供学习交流使用。
+本 `.deb` 包为**非官方重打包版**：整体复用官方 **Linux deb** 安装树（已含 Electron 主二进制 + Chromium 资源 + 原生模块 + 运行时），仅剔除 Windows/macOS 冗余文件并做标题栏对齐后重新打包，使其更干净地运行于 Deepin / UOS / Debian 系 Linux。仅供学习交流使用。
 
 ### 转制原理
 
 | 组件 | 来源 | 作用 |
 | --- | --- | --- |
-| `app.asar` + `app.asar.unpacked` | 官方 **Windows** 安装包 | 应用 JS 层、UI、内置插件、CLI 代理 |
-| Electron **39.2.7** Linux x64 运行时 | Electron 官方/镜像下载 | Chromium 运行时、主进程二进制（ELF） |
-| 顶层资源（`*.pak`/`icudtl.dat`/`snapshot_blob.bin`） | Windows 安装包 | Chromium 资源文件（跨平台共用） |
-| Linux 原生 `.node`/`.so` 模块 | Windows 包内置 + 重编译 | 终端、koffi、sqlite 等原生能力 |
+| 整个安装树（`/opt/WorkBuddy`：`app.asar` + `app.asar.unpacked` + Electron 主二进制 + 原生模块 + 运行时） | 官方 **Linux deb**（`WorkBuddy-linux-x64-deb-*.deb`，`dpkg-deb -x` 解包） | 应用 JS 层、UI、Electron 运行时、原生能力（整体复用，不替换 Electron / 不重编译原生模块） |
+| Chromium 资源（`*.pak`/`icudtl.dat`/`snapshot_blob.bin`） | 官方 Linux deb 内置 | Chromium 资源文件（跨平台共用） |
 
 ### 已落地的关键修复
 
-1. **Electron 版本锁定 39.2.7**：Windows 包内置 Linux 原生模块的 ABI 与 Electron 39 对齐；若误用 37 会导致 `better-sqlite3` ABI 不匹配、daemon 子进程崩溃、页面空白。
-2. **重编译 `better-sqlite3@12.8.0`**：target=39.2.7，覆盖 `app.asar.unpacked` 内的 `.node`，并补齐 `bindings` / `file-uri-to-path`。
-3. **标题栏自绘**：`--title-bar-style=custom` + main.js `titleBarOverlay` 守卫，避免 Linux 下标题栏白块/丢失。
-4. **沙箱回退**：无 root 或 `chrome-sandbox` 未 setuid 时，启动脚本自动追加 `--no-sandbox`。
-5. **补齐运行时依赖**：复制 `chrome_crashpad_handler` 避免启动 FATAL，`ulimit -n 65535` 提高文件描述符上限。
-6. **Windows/macOS 专属模块安全降级**：`qimei-node` / `turing-sdk` / `wechat-copydata-decoder` 等按代码逻辑降级，不影响主流程。
+1. **整体复用官方 Linux deb 的 Electron / 原生模块**：官方 Linux deb 已自带与 `app.asar` ABI 一致的 Electron 与主进程原生模块（含对话所需的 Local NativeRuntime），直接 `dpkg-deb -x` 解包整体复制，**禁止用 GitHub Electron 替换 / 重编译**，否则原生模块 ABI 不匹配。
+2. **标题栏对齐 Windows**：补三处 renderer Windows 专属分支 + 左槽 CSS，使 Linux 标题栏观感与 Windows 一致（`--no-patch` 可出原味版）。
+3. **沙箱回退**：无 root 或 `chrome-sandbox` 未 setuid 时，启动脚本自动追加 `--no-sandbox`。
+4. **补齐运行时依赖**：复制 `chrome_crashpad_handler` 避免启动 FATAL，`ulimit -n 65535` 提高文件描述符上限。
+5. **Windows/macOS 冗余剔除**：`--slim` 默认开启，删除 exe/dll/framework 与跨平台预编译（win32*/darwin*/msvc* 目录），仅保留 `linux_x64`，规避误删跨平台 Node 代码导致的扩展崩溃。
 
 ### 安装与运行
 
