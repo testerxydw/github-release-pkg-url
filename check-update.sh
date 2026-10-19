@@ -164,5 +164,11 @@ git tag -a "$NEW_TAG" -m "WorkBuddy ${APP_V} Linux 打包 (${NEW_TAG})
 # （本仓库默认分支是 master 而非 main，不能写死 main，否则会误建 main 分支）
 TARGET_BRANCH="${GITHUB_REF_NAME:-master}"
 git push origin "HEAD:${TARGET_BRANCH}"
+# 若配置了 github remote（本地调试场景：origin 为 Gitee 镜像、GitHub Actions 跑在
+# github remote 仓库），需同步推送才能触发 build-deb；CI 内无此 remote 自动跳过。
+if git remote get-url github >/dev/null 2>&1; then
+    git push github "HEAD:${TARGET_BRANCH}" || true
+    git push github "$NEW_TAG" || true
+fi
 git push origin "$NEW_TAG"
 log "已推送 ${TARGET_BRANCH} 与 tag $NEW_TAG —— 本仓库 build-deb 将自动构建并发布 Release。"
