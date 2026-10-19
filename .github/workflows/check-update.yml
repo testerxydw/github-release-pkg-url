@@ -3,11 +3,13 @@
 #
 # 本仓库同时承担：更新探测 + 拉取私有源码构建 + 产物发布 + 索引维护。
 # 流程：定时/手动 → 跑探测脚本
-#       → 有新版则写 latest-workbuddy-deb.txt、打 tag 并推送
-#       → tag push 触发本仓库 build-deb.yml（构建 → 发布 Release → 更新索引 → 通知）
+#       → 有新版则写 latest-windows-exe.txt（win 通道）、打 tag 并推送
+#       → tag push 触发本仓库 build-deb.yml（hybrid 混合构建 → 发布 Release → 更新索引 → 通知）
 #
 # 两个探测目标（各自独立 job，互不影响）：
-#   ① WorkBuddy  check-update.sh    tag: vX.Y.Z-1          接口 copilot.tencent.com（匿名可探测）
+#   ① WorkBuddy  check-update.sh    tag: vX.Y.Z-1          接口 copilot.tencent.com
+#       2026-10 混合构建改造：探测通道从【官方 Linux deb】改为【Windows 安装包】——
+#       win 通道新版发布最早、无「推荐版挡板」；Linux 版仅作 hybrid 构建的基座（latest-workbuddy-deb.txt 固定）。
 #   ② JoyCode    check-joycode.sh   tag: joycode-vX.Y.Z-1  接口 joycode-api.jd.com（**需登录态**）
 #
 # ⚠️ 必须配置 Secret：PRIVATE_REPO_PAT

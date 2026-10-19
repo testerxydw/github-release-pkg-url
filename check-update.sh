@@ -1,29 +1,28 @@
 #!/usr/bin/env bash
 # ============================================================================
-# WorkBuddy 更新探测器（公有 CI 仓库专用精简版）
+# WorkBuddy 更新探测器（公有 CI 仓库专用精简版）· win 通道 + 混合构建
 #
-# 与私有源码仓库 check-update.sh 的区别：
-#   - 只维护本仓库的 latest-workbuddy-deb.txt（官方 Linux deb 直链），不改动任何 RELEASE_NOTES.md
-#   - 检测到新版本后，在【本仓库】打 tag 并推送，触发本仓库 build-deb.yml
-#     （因此检出/推送必须用 PAT：GITHUB_TOKEN 推 tag 不会触发其它 workflow）
+# 与旧版的区别（2026-10 混合构建改造）：
+#   - 探测通道从【官方 Linux deb】改为【Windows 安装包】（platform=workbuddy-win32-x64-user）：
+#     win 通道新版发布最早、无「推荐版挡板」，linux deb 仅作混合构建的基座来源。
+#   - 打包方式：私有仓库 win-to-linux 分支 build.sh（--base hybrid 默认）——
+#     win 5.8.3 JS 层 + 官方 Linux deb 腾讯定制基座（含 workbuddyStorage 定制 API）。
+#   - 版本基准：latest-windows-exe.txt（win 安装包直链，本脚本维护）
+#   - 基座来源：latest-workbuddy-deb.txt（官方 Linux deb 直链，长期固定即可，
+#     仅作基座；不再驱动版本比较/打 tag）
 #
-# 依赖：curl / git / python3（解析本机登录态时用）
+# 检测到 win 新版后，在【本仓库】打 tag 并推送，触发本仓库 build-deb.yml
+# （检出/推送必须用 PAT：GITHUB_TOKEN 推 tag 不会触发其它 workflow）
+#
+# 依赖：curl / git
 # 用法：bash check-update.sh                        # 探测(接口+直链监控) + 有更新则写文件/打 tag/推送
 #       bash check-update.sh --url <直链>            # 直链模式：录入人工/社区发现的新版直链(校验可达+解析版本+写latest+打tag)
 #       bash check-update.sh --url <直链> --force    # 强制录入(即使版本不高于当前，用于修正/重录)
 #       DRY_RUN=1 bash check-update.sh               # 只打印将要执行的动作，不落盘/不推送
 #
-# 关于「直链模式」为何需要手工录入：
-#   下载站(download.codebuddy.cn) 是 COS 对象存储，经腾讯云 CDN 后「列举 query 被吞」
-#   （GET /?prefix= 只返回桶位置而非文件列表），既无目录列举也无 latest 别名，且文件名
-#   必须带精确 commit hash —— 因此无法自动枚举「比 latest 更高」的 build。v2/update 接口对
-#   linux 通道又有「推荐版挡板」(当前 5.5.6)，不向低版本主动推「下载站已发布但未设推荐」的
-#   幽灵版(如 5.6.2)。故此类版本只能由人/社区发现直链后，用 --url 半自动录入。
-#
 # 灰度探测（可选，默认匿名只探测 GA 版）：
 #   接口 v2/update 按 x-user-id 做灰度分桶，带真实 userId 才能看到该账号被灰度到的版本。
-#   userId 来源优先级：环境变量 WB_X_USER_ID（CI 用 repo secret 注入）> 本机 ~/.workbuddy/app/sessions.json
-#   （实测：仅带 x-user-id 请求头即可命中灰度，无需 Authorization/cookie；CI 日志中该值会被 secret 自动 mask）
+#   userId 来源：环境变量 WB_X_USER_ID（CI 用 repo secret 注入）
 # ============================================================================
 set -uo pipefail
 
@@ -41,28 +40,28 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
 API="https://copilot.tencent.com/v2/update"
-PLATFORM="workbuddy-linux-x64-deb"
-URL_FILE="latest-workbuddy-deb.txt"
+PLATFORM="workbuddy-win32-x64-user"
+URL_FILE="latest-windows-exe.txt"          # win 安装包直链（版本基准，本脚本维护）
+BASE_FILE="latest-workbuddy-deb.txt"       # 官方 Linux deb 直链（hybrid 基座，仅构建用）
 DRY_RUN="${DRY_RUN:-0}"
 
 log() { echo "[check-update] $*"; }
 die() { echo "[check-update][错误] $*" >&2; exit 1; }
 
-[[ -f "$URL_FILE" ]] || die "缺少 $URL_FILE"
+[[ -f "$URL_FILE" ]] || die "缺少 $URL_FILE（win 安装包直链，首次需用 --url 录入或手工写入）"
+[[ -f "$BASE_FILE" ]] || log "提示：缺少 $BASE_FILE（hybrid 基座直链），构建阶段将无法下载官方基座"
 
-# ---------- 1. 读取本仓库当前 Linux deb 版本 ----------
-CUR_DEB=$(grep -oE 'WorkBuddy-linux-x64-deb-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+\.deb' "$URL_FILE" | head -1 || true)
-CUR_FULL=$(echo "$CUR_DEB" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
-[[ -n "$CUR_FULL" ]] || die "无法解析当前 Linux deb 版本（$URL_FILE）"
-log "当前仓库 Linux deb 版本: $CUR_FULL"
+# ---------- 1. 读取本仓库当前 Windows 版本 ----------
+CUR_EXE=$(grep -oE 'WorkBuddy-win32-x64-user-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+\.exe' "$URL_FILE" | head -1 || true)
+CUR_FULL=$(echo "$CUR_EXE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
+[[ -n "$CUR_FULL" ]] || die "无法解析当前 Windows 版本（$URL_FILE）"
+log "当前仓库 Windows 版本: $CUR_FULL"
 
 # ---------- 1.2 下载站直链可达性监控 ----------
-# 下载站（download.codebuddy.cn，COS 对象存储）无目录列举、无 latest 别名，
-# 文件名必须带精确 commit hash，无法靠枚举 build 自动发现「最新」。因此本脚本以
-# latest-workbuddy-deb.txt 为权威版本源：仅校验「当前记录直链是否仍可访问」，
-# 不可达时告警但不自动改写（避免用错误默认值覆盖人工维护的版本）。
+# 下载站（download.codebuddy.cn）无目录列举、无 latest 别名，文件名必须带精确 commit hash，
+# 故仅校验「当前记录直链是否仍可访问」，不可达时告警但不自动改写。
 CUR_URL=$(head -1 "$URL_FILE" | tr -d '[:space:]')
-# 用 Range 头只取 1 字节，避免下载整个 283MB 导致超时；接受 200/206 视为可达
+# 用 Range 头只取 1 字节，避免下载整个安装包导致超时；接受 200/206 视为可达
 HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -r 0-0 "$CUR_URL" 2>/dev/null)
 HTTP="${HTTP:-000}"
 if [[ "$HTTP" == "200" || "$HTTP" == "206" ]]; then
@@ -72,34 +71,17 @@ else
 fi
 
 # ---------- 1.5 解析登录态（灰度 cohort 探测用） ----------
-# 优先级：环境变量 WB_X_USER_ID（CI secret 注入）> 本机已登录的 WorkBuddy userData
 WB_X_USER_ID="${WB_X_USER_ID:-}"
-WB_X_TENANT_ID="${WB_X_TENANT_ID:-}"
-if [[ -z "$WB_X_USER_ID" ]]; then
-    SESS_FILE="$HOME/.workbuddy/app/sessions.json"
-    PY="$(command -v python3 || command -v python || true)"
-    if [[ -n "$PY" && -f "$SESS_FILE" ]]; then
-        WB_X_USER_ID=$("$PY" -c '
-import sys, json
-try:
-    d = json.load(open(sys.argv[1], encoding="utf-8"))
-    print(d["sessions"][0]["userId"])
-except Exception:
-    pass
-' "$SESS_FILE" 2>/dev/null || true)
-    fi
-fi
 AUTH_Q=""
-[[ -n "$WB_X_USER_ID" ]]   && AUTH_Q="${AUTH_Q}&x-user-id=${WB_X_USER_ID}"
-[[ -n "$WB_X_TENANT_ID" ]] && AUTH_Q="${AUTH_Q}&x-tenant-id=${WB_X_TENANT_ID}"
+[[ -n "$WB_X_USER_ID" ]] && AUTH_Q="${AUTH_Q}&x-user-id=${WB_X_USER_ID}"
 log "登录态: $([[ -n "$WB_X_USER_ID" ]] && echo "已带 x-user-id（灰度探测）" || echo "匿名（仅 GA 版）")"
 
 # ---------- 2. 探测更新（直链模式 / 接口模式） ----------
 if [[ -n "$URL_OVERRIDE" ]]; then
     # 直链模式（源C）：人工/社区发现的新版直链。校验可达 + 解析版本，跳过接口探测。
     NEW_URL="$URL_OVERRIDE"
-    NEW_DEB="$(basename "${NEW_URL%%\?*}")"
-    NEW_FULL="$(echo "$NEW_DEB" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)"
+    NEW_EXE="$(basename "${NEW_URL%%\?*}")"
+    NEW_FULL="$(echo "$NEW_EXE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)"
     [[ -n "$NEW_FULL" ]] || die "无法从直链解析版本号: $NEW_URL"
     HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 -r 0-0 "$NEW_URL" 2>/dev/null)
     HTTP="${HTTP:-000}"
@@ -108,7 +90,7 @@ if [[ -n "$URL_OVERRIDE" ]]; then
     fi
     log "直链模式：录入用户直链 版本=$NEW_FULL 可达性OK"
 else
-    # 接口模式（源A）：v2/update 探测（受 linux 推荐版挡板限制，仅能发现官方设为推荐版的更新）
+    # 接口模式（源A）：win 通道 v2/update 探测（新版发布最早，无 linux 通道推荐版挡板）
     FEED_URL="${API}?platform=${PLATFORM}&version=${CUR_FULL}${AUTH_Q}"
     if [[ -n "$WB_X_USER_ID" ]]; then
         MASKED="${WB_X_USER_ID:0:8}***"
@@ -171,13 +153,13 @@ printf '%s\n' "$NEW_URL" > "$URL_FILE"
 log "已写入 $URL_FILE"
 
 git add "$URL_FILE"
-git commit -m "chore: 上游更新至 WorkBuddy ${NEW_FULL}" >/dev/null
+git commit -m "chore: 上游更新至 WorkBuddy ${NEW_FULL} (win 通道)" >/dev/null
 git tag -a "$NEW_TAG" -m "WorkBuddy ${APP_V} Linux 打包 (${NEW_TAG})
 
-基于上游官方 Linux deb（整体转制 + 精简）:
-  $(basename "${NEW_URL%%\?*}")
-下载:
-  ${NEW_URL}"
+基于上游 Windows 安装包 JS 层 + 官方 Linux deb 定制基座（hybrid 混合构建）:
+  win: $(basename "${NEW_URL%%\?*}")
+  win 下载: ${NEW_URL}
+  基座: $(head -1 "$BASE_FILE" 2>/dev/null | tr -d '[:space:]')"
 # 推送分支：分支名取 CI 提供的 GITHUB_REF_NAME
 # （本仓库默认分支是 master 而非 main，不能写死 main，否则会误建 main 分支）
 TARGET_BRANCH="${GITHUB_REF_NAME:-master}"
