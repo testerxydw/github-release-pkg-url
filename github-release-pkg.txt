@@ -61,3 +61,11 @@ https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.8.3-1/
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.8.3-1/com.xydw.workbuddy_5.8.3-6-nopatch_amd64.deb
 # 2026-10-19 06:29 WorkBuddy CN 5.8.3-6-nopatch (arm64)
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.8.3-1/com.xydw.workbuddy_5.8.3-6-nopatch_arm64.deb
+# 2026-10-22 05:52 WorkBuddy CN 5.9.0-1 (amd64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.9.0-1/com.xydw.workbuddy_5.9.0-1_amd64.deb
+# 2026-10-22 05:49 WorkBuddy CN 5.9.0-1 (arm64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.9.0-1/com.xydw.workbuddy_5.9.0-1_arm64.deb
+# 2026-10-22 05:52 WorkBuddy CN 5.9.0-2-nopatch (amd64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.9.0-1/com.xydw.workbuddy_5.9.0-2-nopatch_amd64.deb
+# 2026-10-22 05:49 WorkBuddy CN 5.9.0-2-nopatch (arm64)
+https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.9.0-1/com.xydw.workbuddy_5.9.0-2-nopatch_arm64.deb
