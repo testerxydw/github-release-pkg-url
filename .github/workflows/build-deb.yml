@@ -4,15 +4,15 @@
 # WorkBuddy 采用【混合构建】：win 5.8.3+ JS 层（app.asar/app.asar.unpacked，新版功能）
 #   + 官方 Linux deb 腾讯定制基座（Electron 37 + workbuddyStorage 定制 API，
 #   daemon 凭据加密依赖）。构建脚本在私有仓库 testerxydw/workbuddy-linux 的
-#   win-to-linux 分支（build.sh --base hybrid 默认）。
+#   main 分支（build.sh --base hybrid 默认；hybrid 方案已于 2026-10-23 合并入 main）。
 #
 # 两个子项目共用本 workflow，按 tag 前缀分流：
-#   - WorkBuddy CN  tag v*              → job: build（矩阵 x64/arm64，**每版出双包**：
-#                                         默认补丁版 + `-nopatch` 原味版）+ update-index + notify
+#   - WorkBuddy CN  tag v*              → job: build（矩阵 x64/arm64，每版每架构【只出一个原味包】，
+#                                         不打前端补丁：com.xydw.workbuddy_<版本>_<架构>.deb）+ update-index + notify
 #   - JoyCode       tag joycode-v*      → job: build-joycode（仅 amd64）+ update-index + notify
 #
 # 触发：本仓库 push tag（v* / joycode-v*）；或手动 workflow_dispatch
-# 源码：从【私有仓库】testerxydw/workbuddy-linux 拉取 win-to-linux 分支（PRIVATE_REPO_PAT），
+# 源码：从【私有仓库】testerxydw/workbuddy-linux 拉取 main 分支（PRIVATE_REPO_PAT），
 #       检出到 src/ 子目录；构建脚本在 src/ 内运行，产物 deb 落在 src/。
 #       （脚本以自身所在目录 SCRIPT_DIR 定位安装包与产物，故安装包须放在脚本同级或上一级）
 # 安装包来源：
@@ -55,12 +55,12 @@ jobs:
       - name: 检出本仓库（取 latest-workbuddy-deb.txt）
         uses: actions/checkout@v4
 
-      - name: 拉取私有源码（testerxydw/workbuddy-linux · win-to-linux 分支）
+      - name: 拉取私有源码（testerxydw/workbuddy-linux · main 分支）
         uses: actions/checkout@v4
         with:
           repository: testerxydw/workbuddy-linux
           token: ${{ secrets.PRIVATE_REPO_PAT }}
-          ref: win-to-linux
+          ref: main
           path: src
 
       - name: 安装系统依赖
@@ -107,33 +107,23 @@ jobs:
           fi
           echo "基座架构校验通过: $FNAME -> $DEB_ARCH_CHK"
 
-      # ---- 每版出双包：① 默认补丁版（UI 与 Windows 对齐）② 原味版（--no-patch，仅观感差异，功能一致）----
-      # 连续两次构建会按 deb-pkg/DEBIAN/control 里的版本自动错开 revision（如 5.8.3-4 / 5.8.3-5），
-      # 两包可共存互不覆盖；原味包再追加 -nopatch 后缀便于区分。
-      # ⚠️ 后缀不能含下划线 —— update-index 用 `包名_版本_架构.deb` 解析生成索引说明。
+      # ---- 只出一个包：原味版（不打前端补丁）----
+      # 自 2026-10-23 起不再打「标题栏对齐 Windows」等前端补丁，build.sh 默认即原味版（DO_PATCH=0），
+      # 每版每架构只产出一个 deb：com.xydw.workbuddy_<版本>_<架构>.deb（如 com.xydw.workbuddy_5.9.0-1_amd64.deb）。
+      # 历史沿革：此前每版出双包（补丁版 + -nopatch 原味版，版本号还会错开 revision），现已合并为单一原味包。
       # 构建模式：hybrid（build.sh 默认）= win JS 层 + 官方 Linux 定制基座。
       #   注意 arm64 hybrid 未实测，如失败可在私有仓库把 build.sh 基座校验临时放宽排查。
-      - name: 构建 deb（补丁版 · ${{ matrix.arch }}）
+      - name: 构建 deb（原味版 · ${{ matrix.arch }}）
         run: |
-          cd src && bash build.sh --arch ${{ matrix.arch }} --no-install --patch
-          mkdir -p /tmp/deb-patched
-          mv com.xydw.workbuddy_*_${{ matrix.debarch }}.deb /tmp/deb-patched/
-          echo "补丁版产物："; ls -lh /tmp/deb-patched/
+          cd src && bash build.sh --arch ${{ matrix.arch }} --no-install
+          echo "本次将发布："; ls -lh com.xydw.workbuddy_*_${{ matrix.debarch }}.deb
 
-      - name: 构建 deb（原味版 --no-patch · ${{ matrix.arch }}）
-        run: |
-          cd src && bash build.sh --arch ${{ matrix.arch }} --no-install --no-patch
-          f="$(ls com.xydw.workbuddy_*_${{ matrix.debarch }}.deb | head -1)"
-          mv "$f" "${f%_${{ matrix.debarch }}.deb}-nopatch_${{ matrix.debarch }}.deb"
-          mv /tmp/deb-patched/*.deb ./
-          echo "本次将发布："; ls -lh com.xydw.workbuddy_*.deb
-
-      - name: 发布 deb 到本仓库 Release（补丁版 + 原味版）
+      - name: 发布 deb 到本仓库 Release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          # 仅发布 deb 主产物（不发布任何解包目录/源码）：补丁版 + -nopatch 原味版
+          # 仅发布 deb 主产物（不发布任何解包目录/源码）
           files: src/com.xydw.workbuddy_*_${{ matrix.debarch }}.deb
           fail_on_unmatched_files: false
 

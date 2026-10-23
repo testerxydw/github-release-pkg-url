@@ -36,7 +36,7 @@
 - 写 workflow 内嵌 `python3 -c '...'` 时，**python 代码里绝不能出现单引号**（会提前结束 bash 字符串），
   否则该 step 必失败；用双引号 + 转义替代（详见 2026-09-15 记忆，已修 notify 的两处历史遗留）。
 
-## WorkBuddy 每版双包（2026-09-20 起，commit eb6fb25）
+## WorkBuddy 每版双包（2026-09-20 起，commit eb6fb25）—— ⚠️ 已于 2026-10-23 废弃，见下一节
 - `build` job 每次同时产出**两个包**（每架构各一）：
   - 默认**补丁版**：`com.xydw.workbuddy_<ver>_<arch>.deb` —— 打 A/B/C 三段 app.asar UI 补丁，UI 与 Windows 对齐
   - **原味版**：`com.xydw.workbuddy_<ver2>-nopatch_<arch>.deb` —— `build.sh --no-patch`，仅观感差异、功能一致
@@ -50,3 +50,17 @@
   → **只构建、不发布、不写索引**，安全。实测 run `35484664219` 全绿，约 3.5 分钟/架构。
 - 手工发布"本地构建包"（如原味包）时，**tag 必须避开 `v*` / `joycode-v*`**（例：`nopatch-v5.6.0-2`），
   否则会触发 CI 构建并产出**同名资产**覆盖上传的文件。
+
+## WorkBuddy 只出原味版单包（2026-10-23 起，取代上一节的双包方案）
+- **决策**：不再打前端补丁（标题栏对齐 Windows 那套 app.asar 补丁），每版每架构**只出一个原味包**。
+- `build.sh`（私有仓库 `testerxydw/workbuddy-linux` · `win-to-linux` 分支）：`DO_PATCH` 默认由 `1` 改为 `0`；
+  `--patch` / `--no-patch` 开关与 `stage_patch_app` 函数**保留**（仅作对比用），主流程 `if [[ DO_PATCH -eq 1 ]]` 守卫不变。
+  **未引入任何包名/路径后缀机制** —— 产物即 `com.xydw.workbuddy_<版本>_<架构>.deb`（如 `com.xydw.workbuddy_5.9.0-1_amd64.deb`），
+  安装路径 `/opt/workbuddy`、入口 `workbuddy`，与 2026-09 之前的形态一致。
+- `build-deb.yml`：`build` job 的双构建合并为**一次** `bash build.sh --arch X --no-install`（不传 patch 参数，靠新默认）；
+  删除补丁版 step、`/tmp/deb-patched` 暂存与 `-nopatch` 改名；发布 glob 保持 `src/com.xydw.workbuddy_*_<debarch>.deb`。
+- 版本号逻辑**未动**（仍按 exe 主版本变化归 1 / 同版本 revision+1），注意别再把"原味版沿用版本号"的分支加回来
+  （那只在"先构建补丁版再构建原味版"的双包场景下才成立，单包场景会导致版本号永不递增）。
+- `update-index` / `NAME_MAP` **无需改动**（不再有 `workbuddy-nopatch` 资产）；历史索引条目保留不改。
+- 已本地验证：默认构建不执行 `阶段 3.2/5`，单产物 `com.xydw.workbuddy_5.9.0-1_amd64.deb`，
+  `Package=com.xydw.workbuddy`、`Version=5.9.0-1`，bin/desktop/图标/postinst 全部为标准命名无 `-nopatch` 残留。
