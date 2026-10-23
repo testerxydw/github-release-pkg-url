@@ -7,21 +7,23 @@
 ## 1. WorkBuddy CN（腾讯 CodeBuddy AI 编程工作台 · Linux 重打包版）
 
 - **包名**：`com.xydw.workbuddy`
-- **架构**：`amd64`
-- **适用系统**：Deepin 23 / UOS v25 / Debian 12+（amd64）
+- **版本**：`5.9.0-3`
+- **架构**：`amd64` / `arm64`
+- **适用系统**：Deepin 23 / UOS v25 / Debian 12+（amd64 / arm64）
 - **产品**：腾讯 CodeBuddy 的 AI 编程工作台（`codebuddy` / `cbc-prewarm`，UI 为 Electron 工作台）
 
 ### 产品简介
 
 **WorkBuddy** 是腾讯 **CodeBuddy** 的 AI 编程工作台产品，提供 AI Agent、智能编程辅助、工作台多模态创作等能力。官方已发布 Linux deb（`WorkBuddy-linux-x64-deb-*.deb`），但仍以 Windows / macOS 为先。
 
-本 `.deb` 包为**非官方重打包版**：整体复用官方 **Linux deb** 安装树（已含 Electron 主二进制 + Chromium 资源 + 原生模块 + 运行时），仅剔除 Windows/macOS 冗余文件并做标题栏对齐后重新打包，使其更干净地运行于 Deepin / UOS / Debian 系 Linux。仅供学习交流使用。
+本 `.deb` 包为**非官方重打包版**：采用 **hybrid 混合构建** —— JS 层（`app.asar` + `app.asar.unpacked`，新版本功能）取自 Windows 安装包，二进制基座（腾讯定制 Electron 37、Chromium 资源、Linux 原生模块与运行时）整体取自官方 Linux deb，仅剔除 Windows/macOS 冗余文件后重新打包，使其更干净地运行于 Deepin / UOS / Debian 系 Linux。仅供学习交流使用。
 
 ### 转制原理
 
 | 组件 | 来源 | 作用 |
 | --- | --- | --- |
-| 整个安装树（`/opt/WorkBuddy`：`app.asar` + `app.asar.unpacked` + Electron 主二进制 + 原生模块 + 运行时） | 官方 **Linux deb**（`WorkBuddy-linux-x64-deb-*.deb`，`dpkg-deb -x` 解包） | 应用 JS 层、UI、Electron 运行时、原生能力（整体复用，不替换 Electron / 不重编译原生模块） |
+| JS 层（`app.asar` + `app.asar.unpacked`） | 官方 **Windows** 安装包（NSIS，7z 解包） | 应用 JS 层与 UI，取 Windows 包的新版本功能（asar 纯 JS，跨架构通用） |
+| 二进制基座（`workbuddy` 主二进制 + Chromium 资源 + Linux 原生 `.so` + locales + `runtime/`） | 官方 **Linux deb**（`WorkBuddy-linux-{x64,arm64}-deb-*.deb`，`dpkg-deb -x` 解包） | 腾讯定制 Electron 37（含 `electron.workbuddyStorage` 定制 API，daemon 凭据加密依赖）与 Linux 原生能力，整体保留、不替换 |
 | Chromium 资源（`*.pak`/`icudtl.dat`/`snapshot_blob.bin`） | 官方 Linux deb 内置 | Chromium 资源文件（跨平台共用） |
 
 ### 已落地的关键修复
@@ -30,7 +32,7 @@
 2. **标题栏对齐 Windows**：补三处 renderer Windows 专属分支 + 左槽 CSS，使 Linux 标题栏观感与 Windows 一致。默认即「原味重打包」（不补丁）；仅 `bash build.sh --patch` 才打此补丁。
 3. **沙箱回退**：无 root 或 `chrome-sandbox` 未 setuid 时，启动脚本自动追加 `--no-sandbox`。
 4. **补齐运行时依赖**：复制 `chrome_crashpad_handler` 避免启动 FATAL，`ulimit -n 65535` 提高文件描述符上限。
-5. **Windows/macOS 冗余剔除**：`--slim` 默认关闭（默认仅解包重打包，不剔除）。需显式 `bash build.sh --slim` 才删除 exe/dll/framework 与跨平台预编译（win32*/darwin*/msvc* 目录），仅保留 `linux_x64`，规避误删跨平台 Node 代码导致的扩展崩溃。
+5. **Windows/macOS 冗余剔除**：`--slim` 默认**开启**（hybrid 路线会剔除 exe/dll/framework 与跨平台预编译，仅保留 `linux_${arch}`；已限定 `-type d` 规避误删跨平台 Node 代码导致的扩展崩溃）。`--no-slim` 可关闭。
 
 ### 安装与运行
 
@@ -46,6 +48,8 @@ sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
 
 | 版本 | 安装包 | 下载地址 |
 | --- | --- | --- |
+| `5.9.0-3` | `com.xydw.workbuddy_5.9.0-3_amd64.deb` | <https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.9.0-3/com.xydw.workbuddy_5.9.0-3_amd64.deb> |
+| `5.9.0-3` | `com.xydw.workbuddy_5.9.0-3_arm64.deb` | <https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.9.0-3/com.xydw.workbuddy_5.9.0-3_arm64.deb> |
 | `5.5.6-1` | `com.xydw.workbuddy_5.5.6-1_amd64.deb` | <https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.5.6-1/com.xydw.workbuddy_5.5.6-1_amd64.deb> |
 | `5.4.7-10` | `com.xydw.workbuddy_5.4.7-10_amd64.deb` | <https://github.com/testerxydw/github-release-pkg-url/releases/download/2026-09-02/com.xydw.workbuddy_5.4.7-10_amd64.deb> |
 
@@ -156,12 +160,12 @@ sudo apt-get install -f   # 若提示缺少运行时依赖，自动补齐
 ## 4. JoyCode（京东云 JoyCode IDE · Linux 重打包版）
 
 - **包名**：`joycode`
-- **版本**：`3.0.10-1`
+- **版本**：`3.0.11-1`
 - **架构**：`amd64`
-- **安装包**：`joycode_3.0.10-1_amd64.deb`（约 154MB）
+- **安装包**：`joycode_3.0.11-1_amd64.deb`（约 154MB）
 - **适用系统**：Deepin 23 / UOS v25 / Debian 12+（amd64）
-- **上游**：官方 JoyCode Windows 安装包（`JoyCodeSetup.exe` 3.0.10，Inno Setup 6.4.0.1）
-- **下载地址**：构建完成后由本仓库 tag `joycode-v3.0.10-1` 的 Release 提供
+- **上游**：官方 JoyCode Windows 安装包（`JoyCodeSetup.exe` 3.0.11，Inno Setup 6.4.0.1）
+- **下载地址**：<https://github.com/testerxydw/github-release-pkg-url/releases/download/joycode-v3.0.11-1/joycode_3.0.11-1_amd64.deb>
 
 ### 产品简介
 

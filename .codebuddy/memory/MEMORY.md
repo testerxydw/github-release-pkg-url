@@ -66,6 +66,23 @@
 - 已本地验证：默认构建不执行 `阶段 3.2/5`，单产物 `com.xydw.workbuddy_5.9.0-1_amd64.deb`，
   `Package=com.xydw.workbuddy`、`Version=5.9.0-1`，bin/desktop/图标/postinst 全部为标准命名无 `-nopatch` 残留。
 
+## 触发 CI / 重新发布的正确姿势（2026-10-23 实测）
+- 本机**没有 gh CLI、没有 token**，SSH（`git@github.com`）可用；`curl` 到 github.com 不通，
+  但 `web_fetch` 抓 `api.github.com` 可用（用它监控 run/asset 状态）。
+- 触发手段：新 tag 直接 `git tag -a vX.Y.Z-N -m "..." && git push origin vX.Y.Z-N`；
+  重打已有 tag 用 `git push -f origin master:refs/tags/vX.Y.Z-N`（tag 挪到 master HEAD，
+  不删 tag、不动 Release）。⚠️ `workflow_dispatch` 以 branch 为 ref 时发布/索引/通知全 skip。
+- **绝不要在矩阵 job 里加「清理 Release 旧资产」step**：x64/arm64 两个 job 都会执行，
+  后完成的会删掉先完成 job 刚上传的包（2026-10-23 v5.9.0-1 实测只剩一个架构）。
+  同名覆盖用 `action-gh-release` 的 `overwrite: true`；确需清场要放到矩阵外的独立 job。
+- 想要指定版本号：改私有仓库 `deb-pkg/DEBIAN/control` 的 `Version`（同主版本 → revision+1，
+  主版本变化 → 归 1），build.sh 无 `--version` 参数。**发布后要把 control 基线推进到已发布版本**，
+  否则下次重打还是同一个号。
+- `update-index` 靠 URL 去重：重打同一 tag 且产物 URL 与历史条目相同时会**跳过不写索引**
+  （v5.9.0-1 就这样"文档没更新"）；换新 tag 则正常追加。
+- 版本号类文件位置：`README.md`（各包版本 + 分 tag 下载表）、`github-release-pkg.md`
+  （WorkBuddy/JoyCode 小节的版本/架构/版本历史表）、`github-release-pkg.txt`（CI 自动追加，勿手改）。
+
 ## 分支统一：win-to-linux 已合并入 main，CI 全走 main（2026-10-23）
 - **最终方案 = hybrid（win JS 层 + 官方 Linux deb 基座）+ main 上的改进**。用户否决了 main 上
   `b17cc2d`「移除 win 路线、纯官方 Linux deb 整体转制」的方向，明确要 win+linux 基座方案。
