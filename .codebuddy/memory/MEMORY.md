@@ -2,7 +2,8 @@
 
 ## 项目约定
 - `github-release-pkg.txt` 采用**增量更新**：每次更新**追加新行**（不覆盖旧记录），每条带日期时间，格式为 `# YYYY-MM-DD HH:MM <说明>` 后跟下载链接；最新条目追加在文件末尾。
-- 本仓库双远程：`origin`=gitee(xiyidaiwa/github-releaase-pkg-url)，`github`=github(testerxydw/github-releaase-pkg-url)。
+- 本仓库远程（2026-10-23 复核，**旧记忆的"gitee+github 双远程"已不成立**）：仅 `origin` = `git@github.com:testerxydw/github-release-pkg-url.git`（SSH），分支 `master`，推送 `git push origin master`。
+- 私有源码仓库 `testerxydw/workbuddy-linux` 同样仅 `origin` = `git@github.com:testerxydw/workbuddy-linux.git`（SSH）；SSH 22 端口可用（HTTPS 443 反而不稳）。
 - GitHub Release 统一发布在 tag `2026-09-02`（仓库 github-releaase-pkg-url）。
 - 本环境访问 github 直连不稳定（git push 443 超时），无本地代理；推送 github 常需代理或重试。
 
@@ -64,3 +65,22 @@
 - `update-index` / `NAME_MAP` **无需改动**（不再有 `workbuddy-nopatch` 资产）；历史索引条目保留不改。
 - 已本地验证：默认构建不执行 `阶段 3.2/5`，单产物 `com.xydw.workbuddy_5.9.0-1_amd64.deb`，
   `Package=com.xydw.workbuddy`、`Version=5.9.0-1`，bin/desktop/图标/postinst 全部为标准命名无 `-nopatch` 残留。
+
+## 分支统一：win-to-linux 已合并入 main，CI 全走 main（2026-10-23）
+- **最终方案 = hybrid（win JS 层 + 官方 Linux deb 基座）+ main 上的改进**。用户否决了 main 上
+  `b17cc2d`「移除 win 路线、纯官方 Linux deb 整体转制」的方向，明确要 win+linux 基座方案。
+- 做法：**没有 rebase**（rebase 会把 `b17cc2d` 大重构带到 hybrid 上且需 force push 改写 main 历史），
+  而是 `git merge --no-ff win-to-linux` 进 main，冲突解决策略：
+  - `build.sh` / `deb-pkg/DEBIAN/control` → 取 **win-to-linux** 版（hybrid 主体；control Version 5.8.3-4）
+  - `.gitignore` → 取 **main** 版（更完整），再追加 `.linux-base/`（hybrid 的基座解包目录，必须忽略）
+- 从 main 移植进 hybrid 的两项改进（commit `86c3b32`）：
+  1. **CPU 限核**：`--limit-cpu N` / `--limit-cpu=N`（默认 50% 核数，taskset re-exec 自身）；
+     新增 `ORIG_ARGS`/`LIMIT_CPU`/`apply_cpu_limit`；`total` 用 `nproc`（考虑 cgroup/affinity，
+     容器里 `/proc/cpuinfo` 是宿主机核数会算错）
+  2. **官方基座 deb 架构守卫**：`stage_fetch_linux_base` 里校验 `dpkg-deb -f Architecture` 与目标
+     `DEB_ARCH` 一致，避免把 x64 内容打进 arm64 包（与 CI 侧守卫双保险）
+- `build-deb.yml`：build job 源码检出 `ref: win-to-linux` → **`main`**（与 build-joycode 统一）；
+  **win 安装包下载步骤保留**（hybrid 的 JS 层来源，不能删）。
+- 合并后 main 的 build.sh 默认值：`DO_SLIM=1`（hybrid 既有设计，未采纳 main 的"默认关闭精简"）、
+  `DO_PATCH=0`（不打前端补丁）、`LIMIT_CPU=0`（即默认 50%）。
+- ⚠️ 本地 shell 的 affinity 可能是宿主机的 0-7 而 `nproc` 受 cgroup 限制，验证限核时别被"看起来没限"骗了。
