@@ -118,46 +118,11 @@ jobs:
           cd src && bash build.sh --arch ${{ matrix.arch }} --no-install
           echo "本次将发布："; ls -lh com.xydw.workbuddy_*_${{ matrix.debarch }}.deb
 
-      # 重新发布场景：该 tag 的 Release 可能残留上一次发布的资产（含已停产的 -nopatch 包），
-      # 先清空再上传，避免同名资产 duplicate 报错，也保证 Release 只含本次构建产物。
-      # 正常首发布时 Release 尚不存在，直接跳过（由 action-gh-release 新建）。
-      - name: 清理该 tag Release 的旧资产
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -u
-          REL_ID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$REPO/releases/tags/$TAG" | python3 -c '
-          import sys, json
-          try:
-              print(json.load(sys.stdin).get("id", ""))
-          except Exception:
-              print("")')
-          if [ -z "$REL_ID" ]; then
-            echo "Release 不存在（将由 action-gh-release 新建），跳过清理"
-            exit 0
-          fi
-          IDS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$REPO/releases/$REL_ID/assets" | python3 -c '
-          import sys, json
-          try:
-              print(" ".join(str(a["id"]) for a in json.load(sys.stdin)))
-          except Exception:
-              print("")')
-          if [ -z "$IDS" ]; then
-            echo "无旧资产需要清理"
-            exit 0
-          fi
-          for id in $IDS; do
-            echo "删除旧资产 id=$id"
-            curl -s -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/$REPO/releases/assets/$id" >/dev/null
-          done
-          echo "旧资产清理完成"
-
+      # ⚠️ 不要在这里加「清理 Release 旧资产」step：build 是矩阵（x64/arm64 两个 job），
+      #    每个 job 都会跑一遍，后完成的 job 会把先完成 job 刚上传的资产删掉
+      #    （2026-10-23 v5.9.0-1 重新发布实测踩坑：最终只剩一个架构的包）。
+      #    同名资产覆盖由 action-gh-release 的 overwrite: true 处理即可；
+      #    确需清场时应在矩阵之外的独立 job 里做。
       - name: 发布 deb 到本仓库 Release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         env:
