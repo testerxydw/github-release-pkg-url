@@ -67,7 +67,8 @@ jobs:
         run: |
           sudo apt-get update -y
           # p7zip-full: 解包 win NSIS 安装包(7z)；binutils: strings 校验基座定制 API
-          sudo apt-get install -y rsync dpkg-dev python3 curl p7zip-full binutils
+          # ffmpeg: 图标多尺寸缩放（缺失时 build.sh 回退为原图复制到所有尺寸，图标体积虚增约 1.8M）
+          sudo apt-get install -y rsync dpkg-dev python3 curl p7zip-full binutils ffmpeg
 
       - name: 安装 Node.js（hybrid 构建兜底拉取 bindings/file-uri-to-path 运行时依赖用）
         uses: actions/setup-node@v4
