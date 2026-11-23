@@ -332,7 +332,8 @@ jobs:
               desc = disp + (f" {ver}" if ver else "") + (f" ({arch})" if arch else "")
               created = (a.get("created_at", "") or "")[:16].replace("T", " ")
               out.append(f"# {created} {desc}")
-              out.append(url)
+              # 加 gh-proxy 代理前缀，方便国内快速下载（gh-proxy.com 中转 GitHub 下载）
+              out.append("https://gh-proxy.com/" + url)
           print("\n".join(out))
           ')
           if [ -z "$APPEND" ]; then

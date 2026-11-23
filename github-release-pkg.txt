@@ -90,6 +90,6 @@ https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.11.3-1
 # 2026-11-13 12:56 WorkBuddy CN 5.11.3-1 (arm64)
 https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.11.3-1/com.xydw.workbuddy_5.11.3-1_arm64.deb
 # 2026-11-23 06:12 WorkBuddy CN 5.11.3-2 (amd64)
-https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.11.3-2/com.xydw.workbuddy_5.11.3-2_amd64.deb
+https://gh-proxy.com/https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.11.3-2/com.xydw.workbuddy_5.11.3-2_amd64.deb
 # 2026-11-23 06:12 WorkBuddy CN 5.11.3-2 (arm64)
-https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.11.3-2/com.xydw.workbuddy_5.11.3-2_arm64.deb
+https://gh-proxy.com/https://github.com/testerxydw/github-release-pkg-url/releases/download/v5.11.3-2/com.xydw.workbuddy_5.11.3-2_arm64.deb
